@@ -1,0 +1,36 @@
+[package]
+name = "md-translator"
+version = "0.4.0"
+edition = "2024"
+description = "Whole-document Markdown translation with file caching and Zed native preview"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dialoguer = { version = "0.12", default-features = false }
+directories = "6"
+fs2 = "0.4"
+jsonc-parser = { version = "0.34", features = ["serde", "serde_json", "preserve_order", "cst"] }
+openssh-sftp-client = { version = "0.15.12", default-features = false }
+percent-encoding = "2"
+pulldown-cmark = { version = "0.13", default-features = false }
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "process", "sync", "io-util"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tiny_http = "0.12"
+
+[profile.release]
+lto = "thin"
+strip = true

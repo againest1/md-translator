@@ -1,0 +1,9 @@
+target/
+.DS_Store
+coverage/
+*.log
+.env
+/AGENTS.md
+/AGENTS.override.md
+/docs/
+/tests/
