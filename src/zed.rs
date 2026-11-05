@@ -16,16 +16,9 @@ const CONTEXT: &str =
     "(Editor && mode == full && (extension == md || extension == markdown)) || MarkdownPreview";
 
 pub async fn open_in_zed(project_dir: &Path, path: &Path, binary: &Path) -> Result<()> {
-    // Match the source's project without opening a second file that could take focus.
-    open_target(
-        &[
-            OsStr::new("--add"),
-            project_dir.as_os_str(),
-            path.as_os_str(),
-        ],
-        binary,
-    )
-    .await
+    // Select the project first. Adding the preview in that request would make it a visible root.
+    open_target(&[OsStr::new("--add"), project_dir.as_os_str()], binary).await?;
+    open_target(&[OsStr::new("--existing"), path.as_os_str()], binary).await
 }
 
 pub async fn open_remote_in_zed(uri: &str, binary: &Path) -> Result<()> {
