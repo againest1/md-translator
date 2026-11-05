@@ -3,6 +3,7 @@ use anyhow::{Context, Result, bail, ensure};
 use jsonc_parser::cst::{CstInputValue, CstObject, CstRootNode};
 use serde_json::{Value, json};
 use std::{
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -14,8 +15,17 @@ pub const CONFIGURE: &str = "Markdown: 配置翻译服务";
 const CONTEXT: &str =
     "(Editor && mode == full && (extension == md || extension == markdown)) || MarkdownPreview";
 
-pub async fn open_in_zed(path: &Path, binary: &Path) -> Result<()> {
-    open_target(path.as_os_str(), binary).await
+pub async fn open_in_zed(project_dir: &Path, path: &Path, binary: &Path) -> Result<()> {
+    // Match the source's project without opening a second file that could take focus.
+    open_target(
+        &[
+            OsStr::new("--add"),
+            project_dir.as_os_str(),
+            path.as_os_str(),
+        ],
+        binary,
+    )
+    .await
 }
 
 pub async fn open_remote_in_zed(uri: &str, binary: &Path) -> Result<()> {
@@ -24,13 +34,13 @@ pub async fn open_remote_in_zed(uri: &str, binary: &Path) -> Result<()> {
         url.scheme() == "ssh" && url.host_str().is_some() && url.password().is_none(),
         "远端预览必须使用不含密码的 SSH 文件 URL"
     );
-    open_target(std::ffi::OsStr::new(uri), binary).await
+    open_target(&[OsStr::new("--add"), OsStr::new(uri)], binary).await
 }
 
-async fn open_target(target: &std::ffi::OsStr, binary: &Path) -> Result<()> {
+async fn open_target(args: &[&OsStr], binary: &Path) -> Result<()> {
     ensure!(binary.is_absolute(), "zed_cli 必须是绝对路径");
     let mut command = tokio::process::Command::new(binary);
-    command.arg("--add").arg(target).kill_on_drop(true);
+    command.args(args).kill_on_drop(true);
     let result = tokio::time::timeout(Duration::from_secs(15), command.output())
         .await
         .context("打开 Zed 超时")?
@@ -77,7 +87,13 @@ fn merge_tasks_with_args(text: &str, binary: &Path, prefix: &[String]) -> Result
             if configuring {
                 vec!["configure"]
             } else {
-                vec!["translate", "--file", "$ZED_FILE"]
+                vec![
+                    "translate",
+                    "--file",
+                    "$ZED_FILE",
+                    "--project-root",
+                    "$ZED_WORKTREE_ROOT",
+                ]
             }
             .into_iter()
             .map(String::from),

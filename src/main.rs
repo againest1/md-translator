@@ -49,6 +49,8 @@ enum Command {
             help = "本地路径、[user@]host:path 或 ssh://[user@]host[:port]/path"
         )]
         file: String,
+        #[arg(long, help = "打开译文的本地 Zed 项目目录")]
+        project_root: Option<PathBuf>,
         #[arg(long, help = "远端缓存目录（默认远端 ~/.md-translator/cache）")]
         remote_cache_dir: Option<PathBuf>,
         #[arg(long)]
@@ -137,6 +139,7 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
     match cli.command {
         Command::Translate {
             file,
+            project_root,
             remote_cache_dir,
             force,
             no_open,
@@ -149,6 +152,7 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
                 let result = translate_file(
                     &TranslateOptions {
                         file,
+                        project_root,
                         force,
                         no_open,
                         preferences: config,
@@ -161,6 +165,7 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
                 println!("{}", result.path.display());
             }
             Source::Remote(file) => {
+                ensure!(project_root.is_none(), "--project-root 仅用于本地文件");
                 ensure!(
                     !explicit_local_cache,
                     "远端文件请使用 --remote-cache-dir，不能使用本机的 --cache-dir"

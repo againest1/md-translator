@@ -16,6 +16,7 @@ use url::Url;
 
 pub struct TranslateOptions {
     pub file: PathBuf,
+    pub project_root: Option<PathBuf>,
     pub cache_dir: PathBuf,
     pub preferences: PathBuf,
     pub zed_cli: Option<PathBuf>,
@@ -95,6 +96,19 @@ pub async fn translate_file(
         "仅支持 .md / .markdown 文件"
     );
     let source = fs::read_to_string(&source_path).context("无法读取 UTF-8 Markdown 原文")?;
+    let project_dir = match &options.project_root {
+        Some(root) => {
+            let root = root
+                .canonicalize()
+                .context("无法读取 --project-root 目录")?;
+            ensure!(root.is_dir(), "--project-root 必须是目录");
+            root
+        }
+        None => source_path
+            .parent()
+            .context("原文路径缺少父目录")?
+            .to_path_buf(),
+    };
     let preferences = Preferences::load(&options.preferences)?;
     let provider = preferences.provider()?;
     let zed_binary = if options.no_open {
@@ -119,7 +133,7 @@ pub async fn translate_file(
     {
         show_result(&paths, &source_path, &heading, markdown, warnings)?;
         if !options.no_open {
-            open_in_zed(&paths.view, zed_binary.as_ref().unwrap()).await?;
+            open_in_zed(&project_dir, &paths.view, zed_binary.as_ref().unwrap()).await?;
         }
         eprintln!("已打开完整缓存译文，未请求模型。");
         return Ok(Outcome {
@@ -137,7 +151,7 @@ pub async fn translate_file(
             )?;
         }
         if !options.no_open {
-            open_in_zed(&paths.view, zed_binary.as_ref().unwrap()).await?;
+            open_in_zed(&project_dir, &paths.view, zed_binary.as_ref().unwrap()).await?;
         }
         return Ok(Outcome {
             status: "busy",
@@ -151,7 +165,7 @@ pub async fn translate_file(
     {
         show_result(&paths, &source_path, &heading, &markdown, &warnings)?;
         if !options.no_open {
-            open_in_zed(&paths.view, zed_binary.as_ref().unwrap()).await?;
+            open_in_zed(&project_dir, &paths.view, zed_binary.as_ref().unwrap()).await?;
         }
         return Ok(Outcome {
             status: "cached",
@@ -173,7 +187,7 @@ pub async fn translate_file(
         };
         atomic_write(&paths.view, format!("{heading}> 正在翻译全文…\n"))?;
         if !options.no_open {
-            open_in_zed(&paths.view, zed_binary.as_ref().unwrap()).await?;
+            open_in_zed(&project_dir, &paths.view, zed_binary.as_ref().unwrap()).await?;
         }
         let progress = |message: &str| {
             eprintln!("{message}");
