@@ -4,7 +4,6 @@ use md_translator::{
     client::translate_whole,
     config::{AuthMode, Preferences, credential, credentials_path, save_key},
     remote::Source,
-    remote_workflow::{RemoteTranslateOptions, translate_remote},
     storage, wizard,
     workflow::{TranslateOptions, translate_file},
     zed,
@@ -32,7 +31,7 @@ struct Cli {
     zed_config: Option<PathBuf>,
     #[arg(long, global = true, help = "独立配置文件；凭据文件放在相同目录")]
     config: Option<PathBuf>,
-    #[arg(long, global = true, help = "译文缓存目录")]
+    #[arg(long, global = true, help = "本机译文缓存目录，适用于本地和 SSH 文件")]
     cache_dir: Option<PathBuf>,
     #[arg(long, global = true, help = "Zed CLI 的绝对路径")]
     zed_cli: Option<PathBuf>,
@@ -51,7 +50,7 @@ enum Command {
         file: String,
         #[arg(long, help = "打开译文的本地 Zed 项目目录")]
         project_root: Option<PathBuf>,
-        #[arg(long, help = "远端缓存目录（默认远端 ~/.md-translator/cache）")]
+        #[arg(long, hide = true, help = "已停用；请用 --cache-dir 指定本机缓存目录")]
         remote_cache_dir: Option<PathBuf>,
         #[arg(long)]
         force: bool,
@@ -134,7 +133,6 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
         None => storage::data_dir()?,
     };
     let config = cli.config.unwrap_or_else(|| root.join("config.json"));
-    let explicit_local_cache = cli.cache_dir.is_some();
     let cache_dir = cli.cache_dir.unwrap_or_else(|| root.join("cache"));
     match cli.command {
         Command::Translate {
@@ -143,49 +141,26 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
             remote_cache_dir,
             force,
             no_open,
-        } => match Source::parse(&file)? {
-            Source::Local(file) => {
-                ensure!(
-                    remote_cache_dir.is_none(),
-                    "本地文件请使用 --cache-dir，不能使用 --remote-cache-dir"
-                );
-                let result = translate_file(
-                    &TranslateOptions {
-                        file,
-                        project_root,
-                        force,
-                        no_open,
-                        preferences: config,
-                        cache_dir,
-                        zed_cli: cli.zed_cli,
-                    },
-                    cancel,
-                )
-                .await?;
-                println!("{}", result.path.display());
-            }
-            Source::Remote(file) => {
-                ensure!(project_root.is_none(), "--project-root 仅用于本地文件");
-                ensure!(
-                    !explicit_local_cache,
-                    "远端文件请使用 --remote-cache-dir，不能使用本机的 --cache-dir"
-                );
-                let result = translate_remote(
-                    &RemoteTranslateOptions {
-                        file,
-                        preferences: config,
-                        state_dir: root.join("remote-state"),
-                        cache_dir: remote_cache_dir,
-                        zed_cli: cli.zed_cli,
-                        force,
-                        no_open,
-                    },
-                    cancel,
-                )
-                .await?;
-                println!("{}", result.uri);
-            }
-        },
+        } => {
+            ensure!(
+                remote_cache_dir.is_none(),
+                "--remote-cache-dir 已停用；SSH 译文保存在本机，请使用 --cache-dir。"
+            );
+            let result = translate_file(
+                &TranslateOptions {
+                    file: Source::parse(&file)?,
+                    project_root,
+                    force,
+                    no_open,
+                    preferences: config,
+                    cache_dir,
+                    zed_cli: cli.zed_cli,
+                },
+                cancel,
+            )
+            .await?;
+            println!("{}", result.path.display());
+        }
         Command::InstallZed {
             auto_preview,
             dry_run,

@@ -2,17 +2,14 @@ use anyhow::{Context, Result, bail, ensure};
 use openssh_sftp_client::{
     Sftp, SftpOptions,
     error::{Error as SftpError, SftpErrorKind},
-    metadata::Permissions,
 };
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
     future::Future,
     path::{Component, Path, PathBuf},
     process::Stdio,
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 use tokio::process::{Child, Command};
 use tokio_util::sync::CancellationToken;
@@ -191,6 +188,7 @@ pub struct SshSettings {
     pub config_file: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identity_file: Option<PathBuf>,
+    // Retained only to locate legacy remote previews; new caches are local.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_dir: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -204,7 +202,6 @@ pub struct RemoteFs {
     child: Child,
     timeout: Duration,
     cancel: CancellationToken,
-    directories: HashSet<PathBuf>,
     pub home: PathBuf,
 }
 
@@ -302,16 +299,11 @@ impl RemoteFs {
         )
         .await
         .context("无法建立 SFTP 连接。请先确认本机 ssh 能登录目标，且服务器已启用 SFTP。")?;
-        ensure!(
-            sftp.support_posix_rename(),
-            "服务器未提供 SFTP 原子替换能力（posix-rename）；未发送翻译请求。"
-        );
         let mut remote = Self {
             sftp: Some(sftp),
             child,
             timeout: Duration::from_secs(operation),
             cancel: cancel.clone(),
-            directories: HashSet::new(),
             home: PathBuf::new(),
         };
         remote.home = remote.canonicalize(Path::new(".")).await?;
@@ -377,96 +369,6 @@ impl RemoteFs {
             .with_context(|| format!("远端文件不存在：{}", path.display()))
     }
 
-    pub async fn private_dir(&mut self, path: &Path) -> Result<()> {
-        let mut current = PathBuf::new();
-        for part in path.components() {
-            current.push(part);
-            if matches!(part, Component::RootDir | Component::Prefix(_))
-                || self.directories.contains(&current)
-            {
-                continue;
-            }
-            let mut fs = self.client().fs();
-            bounded(&self.cancel, self.timeout, "创建远端缓存目录", async {
-                match fs.metadata(&current).await {
-                    Ok(metadata) => ensure!(
-                        metadata.file_type().is_some_and(|t| t.is_dir()),
-                        "缓存路径不是目录：{}",
-                        current.display()
-                    ),
-                    Err(error) if missing(&error) => {
-                        if let Err(error) = fs
-                            .dir_builder()
-                            .permissions(Permissions::from(0o700))
-                            .create(&current)
-                            .await
-                        {
-                            // Another process can create the same directory between stat and mkdir.
-                            if !fs
-                                .metadata(&current)
-                                .await
-                                .ok()
-                                .and_then(|m| m.file_type())
-                                .is_some_and(|t| t.is_dir())
-                            {
-                                return Err(error.into());
-                            }
-                        }
-                    }
-                    Err(error) => return Err(error.into()),
-                }
-                Ok(())
-            })
-            .await?;
-            self.directories.insert(current.clone());
-        }
-        Ok(())
-    }
-
-    pub async fn atomic_write(&mut self, path: &Path, content: &[u8]) -> Result<()> {
-        let parent = path.parent().context("远端文件缺少父目录")?;
-        self.private_dir(parent).await?;
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let temporary = parent.join(format!(
-            ".md-translator-{}-{stamp}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let mut fs = self.client().fs();
-        let result = bounded(&self.cancel, self.timeout, "写入远端文件", async {
-            let mut file = self
-                .client()
-                .options()
-                .write(true)
-                .create_new(true)
-                .open(&temporary)
-                .await?;
-            file.set_permissions(Permissions::from(0o600)).await?;
-            file.write_all(content).await?;
-            if self.client().support_fsync() {
-                file.sync_all().await?;
-            }
-            file.close().await?;
-            fs.rename(&temporary, path).await?;
-            Ok(())
-        })
-        .await;
-        if result.is_err() && !self.cancel.is_cancelled() {
-            let _ = tokio::time::timeout(Duration::from_secs(2), fs.remove_file(&temporary)).await;
-        }
-        result.with_context(|| format!("写入远端文件失败：{}", path.display()))
-    }
-
-    pub async fn finish_cancelled_view(&mut self, path: &Path, content: &[u8]) {
-        // A short best-effort cleanup keeps an open preview from claiming the cancelled job is running.
-        let previous_cancel = std::mem::replace(&mut self.cancel, CancellationToken::new());
-        let previous_timeout = std::mem::replace(&mut self.timeout, Duration::from_secs(2));
-        let _ = self.atomic_write(path, content).await;
-        self.cancel = previous_cancel;
-        self.timeout = previous_timeout;
-    }
-
     pub async fn close(mut self) -> Result<()> {
         if let Some(client) = self.sftp.take() {
             bounded(&self.cancel, self.timeout, "关闭 SFTP 会话", async {
@@ -478,4 +380,54 @@ impl RemoteFs {
         ensure!(status.success(), "SSH 进程异常退出：{status}");
         Ok(())
     }
+}
+
+pub async fn read_document(
+    mut file: RemoteFile,
+    settings: &SshSettings,
+    cancel: &CancellationToken,
+) -> Result<(RemoteFile, String)> {
+    let remote = RemoteFs::connect(&file, settings, cancel).await?;
+    let result = async {
+        file.path = remote.canonicalize(&remote.expand(&file.path)?).await?;
+        // Old remote preview URLs still resolve back to their source; new caches are local.
+        let old_cache = remote.expand(
+            settings
+                .cache_dir
+                .as_deref()
+                .unwrap_or_else(|| Path::new("~/.md-translator/cache")),
+        )?;
+        if file.path.starts_with(old_cache.join("views")) {
+            let record = remote
+                .read(
+                    &file
+                        .path
+                        .parent()
+                        .context("旧预览缺少目录")?
+                        .join("source.json"),
+                )
+                .await?;
+            let record: serde_json::Value = serde_json::from_slice(&record)?;
+            let original = Path::new(
+                record["path"]
+                    .as_str()
+                    .context("旧预览缺少原文路径，请从原文发起翻译")?,
+            );
+            ensure!(
+                original.is_absolute() && !original.starts_with(&old_cache),
+                "旧预览中的原文路径无效"
+            );
+            file.path = remote.canonicalize(original).await?;
+        }
+        let content = String::from_utf8(remote.read(&file.path).await?)
+            .context("远端 Markdown 不是 UTF-8 文本")?;
+        Ok((file, content))
+    }
+    .await;
+    if let Err(error) = remote.close().await
+        && result.is_ok()
+    {
+        eprintln!("远端原文已读取，关闭 SSH 会话时收到提示：{error}");
+    }
+    result
 }

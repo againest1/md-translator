@@ -79,7 +79,7 @@ cargo build --release
 
 ## 集中存储与路径
 
-本地文件默认使用系统账户的用户目录，在其下创建统一的 `.md-translator`：
+本地文件和 SSH 文件的译文都保存在本机，默认使用系统账户的用户目录，在其下创建统一的 `.md-translator`：
 
 ```text
 ~/.md-translator/
@@ -99,7 +99,7 @@ cargo build --release
 
 每次触发都会读取当前原文内容计算缓存标识。原文改变后不会误用旧内容的缓存；当前内容没有对应结果时，重新翻译全文。只保存而内容未变，或将内容改回曾经翻译过的版本，仍可复用该版本的缓存。通过 Zed Task 触发时会先保存当前修改。
 
-预览路径由原文件路径与 provider 配置决定，原文内容改变后仍更新同一预览文件。缓存正文保留原始相对资源地址；预览副本根据原文件目录解析图片和文件链接。锁文件避免同一文档重复请求，进程退出后锁自动释放。
+预览路径由原文件地址与 provider 配置决定，原文内容改变后仍更新同一预览文件。SSH 地址包含主机、用户和端口，不同服务器的同名文件使用独立预览。缓存正文保留原始相对资源地址；本地文件的预览副本根据原文件目录解析图片和文件链接。锁文件避免同一文档重复请求，进程退出后锁自动释放。
 
 默认目录不受 `HOME` / `XDG_*` 覆盖（Unix 上通过系统账户记录确定用户目录）。整体迁移位置使用显式参数：
 
@@ -112,7 +112,7 @@ cargo build --release
 
 `--zed-config` 只指定安装 Task / 快捷键和检查预览设置所用的 Zed 配置目录，不用于读取模型或密钥。Zed CLI 默认从常见安装路径查找；非标准安装可在独立配置中设置 `zed_cli` 的绝对路径，或传入 `--zed-cli /absolute/path/to/zed`。
 
-从本机终端翻译时，可在 `translate` 命令中添加 `--project-root /absolute/path/to/project`，指定已在 Zed 打开的项目，普通文件夹项目也适用。Zed 翻译 Task 会自动传入所属项目；普通命令行未指定时，按原文所在目录定位窗口。
+从本机终端翻译时，可在 `translate` 命令中添加 `--project-root /absolute/path/to/project`，指定已在 Zed 打开的本机项目，普通文件夹项目也适用。Zed 翻译 Task 会自动传入所属项目；本地文件未指定时，按原文所在目录定位窗口。
 
 0.2 及之前版本的 Zed provider、环境变量鉴权和偏好格式不再使用，需要运行配置向导。旧缓存目录不自动删除；已有缓存仍可通过显式 `--cache-dir` 使用；只有原文和完整 provider 指纹一致时才命中。
 
@@ -128,22 +128,22 @@ cargo build --release
 
 支持 `[user@]host:path` 和 `ssh://[user@]host[:port]/path`，相对路径按远端登录目录解析。SCP 形式的中文、空格、百分号、`#` 和 `?` 可原样放在引号里；URL 形式的特殊字符需要 URL 编码。含冒号的本地文件名可以用 `./文件名` 或本地绝对路径消除歧义。路径通过 SFTP 协议传输，不拼进远端 shell 命令。
 
-处理顺序是：SSH 读取原文 → 读取远端完整缓存 → 未命中才使用本机 provider 翻译 → 原子写回远端缓存 → 调用本机 `zed --add ssh://…` 打开远端预览。一次运行复用一个 SFTP 会话。API Key、provider 配置留在本机。
+译文、预览和锁文件统一保存在**本机** `~/.md-translator/cache/`，与本地翻译使用相同的缓存目录。服务器只提供原文读取，不写入译文或缓存。再次触发时仍会通过 SSH 读取最新原文；内容与模型配置相同就复用本机缓存，不请求模型。
 
-正式缓存默认放在远端 `~/.md-translator/cache/`，沿用 `translations/<缓存标识>/manifest.json`、`result-*.md` 和 `views/` 预览，不生成重复的 `translation.md`。SSH 预览正文中的图片、文件链接保持原样，不下载图片或转换路径；头部的“返回原文”链接使用 Zed 的 SSH 链接。
+完成后输出本地预览路径，并在本机 Zed 窗口中以标签页打开。需要指定阅读窗口时，用 `--project-root` 传入本机项目目录。译文顶部的“返回原文”通过 SSH 链接打开服务器上的原文件。正文中的相对图片和文件链接保留原样，不下载远端资源；这些资源在本地预览中可能无法显示或打开，请返回原文查看。
 
 ```sh
 # 强制重译
 ./target/release/md-translator translate --file 'dev-server:/home/user/project/README.md' --force
-# 只生成远端缓存并输出 SSH 地址，不打开 Zed
+# 只生成本机缓存并输出本地路径，不打开 Zed
 ./target/release/md-translator translate --file 'dev-server:/home/user/project/README.md' --no-open
-# 指定远端缓存位置；引号保留远端用户的 ~
-./target/release/md-translator translate --file 'dev-server:/home/user/project/README.md' --remote-cache-dir '~/.md-translator/cache'
+# 指定本机缓存位置
+./target/release/md-translator --cache-dir /absolute/local/cache translate --file 'dev-server:/home/user/project/README.md'
 ```
 
-`--cache-dir` 专用于本地文件；远端输入必须用 `--remote-cache-dir`。`--data-dir` 和 `--config` 始终指定本机的配置/状态目录。
+`--cache-dir`、`--data-dir` 和 `--config` 都指向本机路径。也可以把命令输出的本地预览路径传给 `translate --file`；使用相同的缓存目录参数，程序会根据缓存记录重新读取对应的 SSH 原文。
 
-SSH 连接沿用系统 OpenSSH 的连接别名、登录密钥、跳板机和主机验证配置。工具使用 `BatchMode`；如果首次登录仍需要确认主机或输入密码，请先在本机用 `ssh 连接名` 完成登录配置。服务器需要启用 SFTP v3 和 `posix-rename` 原子替换扩展（常规 OpenSSH 服务提供这些能力）。当前已验证 macOS 客户端连接 Linux 服务器。
+SSH 连接沿用系统 OpenSSH 的连接别名、登录密钥、跳板机和主机验证配置。工具使用 `BatchMode`；如果首次登录仍需要确认主机或输入密码，请先在本机用 `ssh 连接名` 完成登录配置。服务器需要启用 SFTP v3，账号只需有原文读取权限，无需缓存目录写权限或原子替换扩展。
 
 可在本机 `config.json` 添加可选的 `ssh` 配置；没有设置时使用系统 SSH 和上述默认值：
 
@@ -153,20 +153,17 @@ SSH 连接沿用系统 OpenSSH 的连接别名、登录密钥、跳板机和主�
     "binary": "/usr/bin/ssh",
     "config_file": "/absolute/path/to/ssh_config",
     "identity_file": "/absolute/path/to/private_key",
-    "cache_dir": "~/.md-translator/cache",
     "connect_timeout_seconds": 15,
     "operation_timeout_seconds": 30
   }
 }
 ```
 
-以上是配置片段，合并到已有配置中；不需要的字段可以省略。向导再次保存 provider 时会保留这些设置。所有工具设置仍使用配置文件和显式参数，不新增环境变量开关。若连接参数只写在自定义 SSH 配置文件里，也需要让 Zed 能使用相同的连接设置，才能自动打开远端文件。
+以上是配置片段，合并到已有配置中；不需要的字段可以省略。向导再次保存 provider 时会保留这些设置。所有工具设置仍使用配置文件和显式参数，不新增环境变量开关。若连接参数只写在自定义 SSH 配置文件里，也需要让 Zed 能使用相同的连接设置，才能通过“返回原文”链接打开远端文件。
 
-如果模型已经返回完整译文，但远端上传或预览文件更新失败，完成的结果会暂存到本机 `.md-translator/remote-state/pending/`。再次运行相同地址、内容和模型配置时优先继续上传（即使带了 `--force`），不重复请求模型；发布成功后删除暂存文件。打开 Zed 失败不会破坏已提交的缓存，普通重试会复用它。
+旧 `--remote-cache-dir` 参数已停用，请改用 `--cache-dir`；旧 `ssh.cache_dir` 不再决定新缓存位置，仅用于识别旧远端预览。旧远端缓存及本机 `remote-state/` 不会自动迁移或删除，也不再继续上传；首次建立本机缓存可能需要重新请求模型。旧远端预览地址仍可作为输入定位原文，之后返回本地预览路径。
 
-`.md-translator/remote-state/locks/` 的锁用于避免同一台本机对同一远端地址重复请求；不同电脑同时翻译不做分布式任务去重。远端结果和预览使用临时文件加原子替换，manifest 最后指向完整结果。
-
-Zed 按 SSH 连接和工作区匹配远端文件；同一服务器打开多个项目时，具体窗口选择仍由 Zed CLI 决定。缓存目录位于项目外，可能作为额外文件显示在工作区中。程序不会自动安排分屏。
+完整结果已保存到本机但预览更新或打开失败时，普通重试会复用缓存；只有需要重新请求模型时才使用 `--force`。
 
 ## 翻译和失败恢复
 
@@ -192,4 +189,4 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
 
-测试使用本地模拟服务，覆盖整篇翻译、保护校验、错误、取消、缓存、独立配置、环境变量不生效和 Zed 安装。SSH 集成测试通过系统原生 `sftp-server` 验证真实 SFTP 文件操作、中文/特殊字符路径、远端缓存复用、上传恢复、取消和打开失败；macOS 自带该测试程序，Linux 开发环境需要安装提供 `sftp-server` 的 OpenSSH 包。这些测试不调用真实付费模型。设计见[整篇翻译设计](docs/translation-design.md)，参考代码授权见[第三方声明](THIRD_PARTY_NOTICES.md)。
+测试使用本地模拟服务，覆盖整篇翻译、保护校验、错误、取消、缓存、独立配置、环境变量不生效和 Zed 安装。SSH 集成测试使用只读 `sftp-server` 验证原文读取、中文/特殊字符路径、本机缓存复用、来源隔离、取消和预览失败恢复；macOS 自带该测试程序，Linux 开发环境需要安装提供 `sftp-server` 的 OpenSSH 包。这些测试不调用真实付费模型。设计见[整篇翻译设计](docs/translation-design.md)，参考代码授权见[第三方声明](THIRD_PARTY_NOTICES.md)。

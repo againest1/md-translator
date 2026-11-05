@@ -15,19 +15,12 @@ pub const CONFIGURE: &str = "Markdown: 配置翻译服务";
 const CONTEXT: &str =
     "(Editor && mode == full && (extension == md || extension == markdown)) || MarkdownPreview";
 
-pub async fn open_in_zed(project_dir: &Path, path: &Path, binary: &Path) -> Result<()> {
+pub async fn open_in_zed(project_dir: Option<&Path>, path: &Path, binary: &Path) -> Result<()> {
     // Select the project first. Adding the preview in that request would make it a visible root.
-    open_target(&[OsStr::new("--add"), project_dir.as_os_str()], binary).await?;
+    if let Some(project_dir) = project_dir {
+        open_target(&[OsStr::new("--add"), project_dir.as_os_str()], binary).await?;
+    }
     open_target(&[OsStr::new("--existing"), path.as_os_str()], binary).await
-}
-
-pub async fn open_remote_in_zed(uri: &str, binary: &Path) -> Result<()> {
-    let url = url::Url::parse(uri)?;
-    ensure!(
-        url.scheme() == "ssh" && url.host_str().is_some() && url.password().is_none(),
-        "远端预览必须使用不含密码的 SSH 文件 URL"
-    );
-    open_target(&[OsStr::new("--add"), OsStr::new(uri)], binary).await
 }
 
 async fn open_target(args: &[&OsStr], binary: &Path) -> Result<()> {
