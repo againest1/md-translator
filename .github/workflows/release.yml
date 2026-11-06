@@ -84,7 +84,7 @@ jobs:
             cp install.sh package/
             tar -czf "dist/md-translator-$TARGET.tar.gz" -C package md-translator README.md USAGE.md LICENSE install.sh
           fi
-          python -c 'import hashlib, pathlib; [(p.with_name(p.name + ".sha256").write_text(hashlib.sha256(p.read_bytes()).hexdigest() + "  " + p.name + "\n")) for p in pathlib.Path("dist").iterdir() if not p.name.endswith(".sha256")]'
+          python -c 'import hashlib, pathlib; [(p.with_name(p.name + ".sha256").write_bytes((hashlib.sha256(p.read_bytes()).hexdigest() + "  " + p.name + "\n").encode("ascii"))) for p in pathlib.Path("dist").iterdir() if not p.name.endswith(".sha256")]'
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
