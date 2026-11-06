@@ -39,7 +39,7 @@ try {
     Copy-Item -LiteralPath $binary -Destination $staged
     if (Test-Path -LiteralPath $destination) {
         # Replace only after download, verification and execution have succeeded.
-        [IO.File]::Replace($staged, $destination, $null)
+        [IO.File]::Replace($staged, $destination, [NullString]::Value)
     } else {
         [IO.File]::Move($staged, $destination)
     }
