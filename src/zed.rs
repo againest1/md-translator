@@ -223,6 +223,72 @@ pub fn install_remote_tasks(
     install_files(&project.join(".zed"), binary, false, dry_run, prefix, true)
 }
 
+pub fn uninstall(config_dir: &Path, remote: bool, dry_run: bool) -> Result<Vec<Change>> {
+    let labels = if remote {
+        [REMOTE_TRANSLATE, REMOTE_RETRANSLATE, REMOTE_CONFIGURE]
+    } else {
+        [TRANSLATE, RETRANSLATE, CONFIGURE]
+    };
+    let mut changes = Vec::new();
+    for name in ["tasks.json", "keymap.json"] {
+        if remote && name == "keymap.json" {
+            continue;
+        }
+        let path = config_dir.join(name);
+        let before = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+        };
+        let root = CstRootNode::parse(&before, &Default::default())?;
+        let array = root
+            .array_value()
+            .with_context(|| format!("Zed {name} 必须是数组"))?;
+        let mut changed = false;
+        for node in array.elements() {
+            let Some(value) = node.to_serde_value() else {
+                continue;
+            };
+            if name == "tasks.json" {
+                if value["label"]
+                    .as_str()
+                    .is_some_and(|label| labels.contains(&label))
+                {
+                    node.remove();
+                    changed = true;
+                }
+            } else if let Some(bindings) = value["bindings"].as_object() {
+                for (key, action) in bindings {
+                    if action[0] == "task::Spawn"
+                        && action[1]["task_name"]
+                            .as_str()
+                            .is_some_and(|label| labels.contains(&label))
+                    {
+                        let object = node.as_object().context("快捷键配置格式错误")?;
+                        if let Some(property) = object.object_value_or_set("bindings").get(key) {
+                            property.remove();
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+        if changed {
+            let mut after = root.to_string();
+            if !after.ends_with('\n') {
+                after.push('\n');
+            }
+            changes.push(Change {
+                path,
+                before: Some(before),
+                after,
+                backup: None,
+            });
+        }
+    }
+    write_changes(changes, dry_run)
+}
+
 fn install_files(
     config_dir: &Path,
     binary: &Path,
@@ -284,6 +350,10 @@ fn install_files(
             });
         }
     }
+    write_changes(changes, dry_run)
+}
+
+fn write_changes(mut changes: Vec<Change>, dry_run: bool) -> Result<Vec<Change>> {
     if !dry_run {
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
         for change in &mut changes {
@@ -294,7 +364,7 @@ fn install_files(
                 Err(e) => return Err(e.into()),
             };
             if current != change.before {
-                bail!("{} 在安装期间已改变，请重试。", change.path.display());
+                bail!("{} 在操作期间已改变，请重试。", change.path.display());
             }
             if let Some(before) = &change.before {
                 let backup = change.path.with_file_name(format!(

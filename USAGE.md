@@ -2,6 +2,55 @@
 
 [返回 README](README.md)
 
+## 下载与安装
+
+首次安装按 [README 的开始使用](README.md#开始使用) 操作。不需要编译程序或安装开发工具；本机阅读需要 Zed，翻译需要能访问所配置的服务。远端项目按 [SSH Remote Project](#ssh-remote-project) 操作。
+
+### 选择下载包
+
+安装命令会自动下载并校验程序。手动下载时，打开 [最新版本](https://github.com/againest1/md-translator/releases/latest)，在 **Assets** 中选择对应文件，不要选择 **Source code**：
+
+| 你的设备 | 下载文件 |
+| --- | --- |
+| Mac，Apple 芯片（M 系列） | `md-translator-aarch64-apple-darwin.tar.gz` |
+| Mac，Intel 芯片 | `md-translator-x86_64-apple-darwin.tar.gz` |
+| Linux，Intel / AMD 64 位 | `md-translator-x86_64-unknown-linux-musl.tar.gz` |
+| Linux，ARM64 | `md-translator-aarch64-unknown-linux-musl.tar.gz` |
+| Windows，Intel / AMD 64 位 | `md-translator-x86_64-pc-windows-msvc.zip` |
+
+Mac 可在 **关于本机** 查看芯片；Windows 可在 **设置 → 系统 → 系统信息** 查看系统类型；Linux 在终端运行 `uname -m`，`x86_64` 对应 Intel / AMD，`aarch64` 对应 ARM64。不提供 32 位或 Windows ARM 原生包。macOS 程序要求 macOS 11 或更新版本，Windows 程序要求 Windows 10 或更新版本；Zed 自身的系统要求以其下载页面为准。
+
+程序包不包含 Zed 或翻译服务。Linux 包可在常见 glibc / musl 发行版运行，不需要另装 OpenSSL；Windows 包不需要另装 Visual C++ 运行库。
+
+### 安装位置与手动安装
+
+安装命令不需要管理员权限。macOS / Linux 安装到 `~/.local/bin/md-translator`，Windows 安装到 `%LOCALAPPDATA%\Programs\md-translator\md-translator.exe`。配置、密钥和译文另存于[数据目录](#集中存储与路径)，更新程序不会删除它们。
+
+手动安装时，先解压下载包，将 `md-translator`（Windows 为 `md-translator.exe`）放到固定目录，再使用该程序运行 `install-zed --auto-preview` 和 `configure`。macOS / Linux 可在解压目录运行：
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 755 ./md-translator "$HOME/.local/bin/md-translator"
+"$HOME/.local/bin/md-translator" install-zed --auto-preview
+"$HOME/.local/bin/md-translator" configure
+```
+
+Windows 将程序复制到上述安装目录后，使用 README 的最后两条 PowerShell 命令。安装 Zed 入口时会备份原配置，保留其它 Task、快捷键和注释。不要将程序留在临时解压目录；Zed 会记住它的绝对路径，移动后需要重新运行 `install-zed`。
+
+下文中的 `md-translator` 表示安装后的程序。若终端提示找不到命令，macOS / Linux 使用 `"$HOME/.local/bin/md-translator"`，Windows PowerShell 使用 `& "$env:LOCALAPPDATA\Programs\md-translator\md-translator.exe"` 替代命令名。Zed Task 不依赖终端的 PATH 设置。
+
+### 安装问题
+
+| 现象 | 处理方式 |
+| --- | --- |
+| 下载失败或校验失败 | 检查能否打开 GitHub 下载页面，恢复网络后重跑安装命令；原程序保留。也可下载对应程序包后手动安装 |
+| 缺少 `curl`、`tar` 或 SHA-256 工具 | 通过系统软件管理器安装提示的工具，或手动下载；这些工具只用于下载和解压 |
+| macOS 提示无法验证开发者 | 当前程序未做 Apple 公证。确认下载来自本仓库后，按系统提示到 **系统设置 → 隐私与安全性** 允许该程序，再重试；不要关闭系统整体保护 |
+| Windows 拦截运行 | 当前程序未做 Windows 代码签名。核对下载来源后，按系统提示查看文件并选择是否允许运行；受组织策略限制时联系管理员 |
+| Windows 更新提示文件被占用 | 结束正在运行的翻译或配置 Task，关闭使用该程序的终端任务后重试 |
+| 安装成功，但本机翻译无法打开 Zed | 确认 Zed 已安装；非标准安装路径可按[集中存储与路径](#集中存储与路径)指定 `--zed-cli` |
+| 安装 Zed 入口提示快捷键冲突 | 在 Zed 的 `keymap.json` 中调整提示的冲突绑定后重跑 `install-zed`；冲突时不会覆盖已有配置 |
+
 ## 独立配置向导
 
 在命令面板的 `task: spawn` 中选择 **Markdown: 配置翻译服务**，终端会展开并获得焦点。也可在本机终端运行 `md-translator configure`。
@@ -33,10 +82,10 @@
 修改非敏感配置可以使用参数；密钥必须在终端中隐藏输入：
 
 ```sh
-./target/release/md-translator configure --base-url https://provider.example/v1 --model your-model --set-key
-./target/release/md-translator configure --no-auth
-./target/release/md-translator configure --timeout 180
-./target/release/md-translator configure --test
+md-translator configure --base-url https://provider.example/v1 --model your-model --set-key
+md-translator configure --no-auth
+md-translator configure --timeout 180
+md-translator configure --test
 ```
 
 ## 日常使用
@@ -81,8 +130,8 @@
 默认目录不受 `HOME` / `XDG_*` 覆盖（Unix 上通过系统账户记录确定用户目录）。整体迁移位置使用显式参数：
 
 ```sh
-./target/release/md-translator --data-dir /absolute/path/md-translator configure
-./target/release/md-translator --data-dir /absolute/path/md-translator install-zed
+md-translator --data-dir /absolute/path/md-translator configure
+md-translator --data-dir /absolute/path/md-translator install-zed
 ```
 
 安装器会把显式存储参数写进管理的 Task，确保向导与翻译使用相同位置。也支持单独的 `--config`、`--cache-dir`；凭据始终位于配置文件同目录。
@@ -95,7 +144,7 @@
 
 ## SSH Remote Project
 
-两端安装 `md-translator`，并分别配置 provider。远端 Task 直接使用远端文件、远端 provider 和远端缓存；远端必须能访问配置的服务地址。完整文档会发送给该服务。本机 provider 不参与远端翻译，远端是否安装 Zed CLI 不影响此流程。
+在 Zed 的远端终端按[下载与安装](#下载与安装)安装适合远端系统的程序，并在远端配置 provider；本机只需 Zed，要翻译本机项目时再在本机安装程序。远端 Task 使用远端文件、provider 和缓存，远端必须能访问配置的服务地址。完整文档会发送给该服务；远端不需要安装 Zed CLI。
 
 ### 安装远端 Task
 
@@ -159,17 +208,56 @@ md-translator --data-dir /absolute/remote/data install-zed --remote --project-ro
 Frontmatter 和原始 HTML 按原文保留。完整性检查不等于语义质量保证；标题翻译后，原文中依赖英文标题的 `#fragment` 目录链接目前可能失效。
 
 ```sh
-./target/release/md-translator translate --file examples/preview-demo.md
-./target/release/md-translator translate --file examples/preview-demo.md --force
-./target/release/md-translator translate --file examples/preview-demo.md --no-open
+md-translator translate --file /path/to/README.md
+md-translator translate --file /path/to/README.md --force
+md-translator translate --file /path/to/README.md --no-open
 ```
 
-## 构建与更新
+## 更新与回退
 
-从源码构建需要支持 Rust 2024 edition 的稳定工具链：
+先结束正在进行的翻译，然后再次运行 [README 中的下载命令](README.md#开始使用)。安装器替换固定位置的程序，保留配置、密钥和缓存，无需重新填写 API Key。运行 `md-translator --version` 查看当前版本。
+
+更新后重新执行 `md-translator install-zed` 以刷新 Zed 入口；远端则在对应项目运行 `md-translator install-zed --remote --project-root /远端项目目录`。使用过 `--data-dir`、`--config`、`--cache-dir` 或 `--zed-cli` 时，重新安装入口要带上原参数。原来从源码目录运行的用户，先按新方式安装，再刷新入口，就可以移走旧程序。
+
+需要退回某个已发布版本时，macOS / Linux 在安装命令末尾指定版本：
 
 ```sh
-cargo build --release
+curl -fsSL https://github.com/againest1/md-translator/releases/latest/download/install.sh | sh -s -- --version v0.4.0
 ```
 
-将对应操作系统与架构的程序安装在需要运行 Task 的机器上，更新后重新执行该机器对应的安装命令。本机用 `install-zed`，远端项目用 `install-zed --remote --project-root /远端项目目录`。安装记录绝对路径，复制本机任务配置到远端不能替代远端安装。
+Windows 下载 README 中的安装脚本后，指定版本运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\md-translator-install.ps1" -Version v0.4.0
+```
+
+将示例版本换成[发布列表](https://github.com/againest1/md-translator/releases)中存在的版本。回退前复制备份整个数据目录，并先阅读该版本说明，旧版本可能不支持较新的配置或缓存。程序不自动检查或后台安装更新。
+
+## 卸载
+
+先结束翻译任务。卸载分为移除 Zed 入口和删除程序，默认保留服务配置、密钥及译文，方便重新安装。
+
+**macOS / Linux**：
+
+```sh
+"$HOME/.local/bin/md-translator" uninstall-zed && rm "$HOME/.local/bin/md-translator"
+```
+
+**Windows PowerShell**：
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\md-translator\md-translator.exe" uninstall-zed
+if ($LASTEXITCODE -eq 0) { Remove-Item "$env:LOCALAPPDATA\Programs\md-translator\md-translator.exe" }
+```
+
+自定义安装目录时请替换程序路径；安装时指定过 `--zed-config`，卸载入口时也要带上该参数。`uninstall-zed --dry-run` 可以先查看会改动的文件。命令只移除本工具的三个 Task 及指向这些 Task 的快捷键，修改前备份，其它配置保留。**所有 Markdown 默认预览**的偏好保留；需要关闭时，在 Zed 的 `settings.json` 中将 `markdown_preview` 下的 `open_markdown_files_in_preview` 设为 `false`。
+
+**SSH Remote Project**：在删除远端程序前，对安装过 Task 的每个远端项目运行：
+
+```sh
+md-translator uninstall-zed --remote --project-root /远端项目目录
+```
+
+然后删除远端程序文件。此命令只移除该项目中的 **Markdown (Remote)** Task；本机安装需在本机另行卸载。
+
+若不再需要配置和译文，确认备份后手动删除 `~/.md-translator`（Windows 为 `%USERPROFILE%\.md-translator`）。**删除后 API Key 和全部缓存译文无法恢复**；使用过自定义数据路径时，按原参数找到相应目录。Zed 配置目录中的 `*.md-translator-*.bak` 是安装或卸载时生成的备份，确认不再需要后可单独删除。

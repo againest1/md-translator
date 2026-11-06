@@ -74,6 +74,15 @@ enum Command {
         #[arg(long, requires = "remote", help = "安装远端 Task 的项目目录")]
         project_root: Option<PathBuf>,
     },
+    /// 移除翻译 Task 与对应快捷键；保留服务配置、密钥、缓存和预览偏好
+    UninstallZed {
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, requires = "project_root", help = "移除指定远端项目的翻译 Task")]
+        remote: bool,
+        #[arg(long, requires = "remote")]
+        project_root: Option<PathBuf>,
+    },
     /// 检查独立配置、缓存与预览；不请求模型，不显示密钥
     Doctor {
         #[arg(long)]
@@ -240,6 +249,45 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
             if auto_preview {
                 println!("Markdown 文件默认以原生预览打开。");
             }
+        }
+        Command::UninstallZed {
+            dry_run,
+            remote,
+            project_root,
+        } => {
+            let directory = if remote {
+                ensure!(
+                    cli.zed_config.is_none(),
+                    "远端 Task 使用 --project-root 卸载，不使用 --zed-config。"
+                );
+                let project = project_root.unwrap().canonicalize()?;
+                ensure!(project.is_dir(), "--project-root 必须是目录");
+                project.join(".zed")
+            } else {
+                match cli.zed_config {
+                    Some(path) => path,
+                    None => storage::zed_config_dir()?,
+                }
+            };
+            let changes = zed::uninstall(&directory, remote, dry_run)?;
+            println!(
+                "{}",
+                if dry_run {
+                    "计划移除翻译入口："
+                } else {
+                    "已移除翻译入口："
+                }
+            );
+            if changes.is_empty() {
+                println!("没有需要移除的翻译入口。");
+            }
+            for change in changes {
+                println!("{}", change.path.display());
+                if let Some(backup) = change.backup {
+                    println!("  备份：{}", backup.display());
+                }
+            }
+            println!("服务配置、密钥、缓存和 Markdown 预览偏好已保留。");
         }
         Command::Doctor { check_key } => {
             println!("配置文件：{}", config.display());
