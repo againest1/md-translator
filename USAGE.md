@@ -35,7 +35,9 @@ install -m 755 ./md-translator "$HOME/.local/bin/md-translator"
 "$HOME/.local/bin/md-translator" configure
 ```
 
-Windows 将程序复制到上述安装目录后，使用 README 的最后两条 PowerShell 命令。安装 Zed 入口时会备份原配置，保留其它 Task、快捷键和注释。不要将程序留在临时解压目录；Zed 会记住它的绝对路径，移动后需要重新运行 `install-zed`。
+Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShell `install-zed` 命令，再按第二步配置服务。安装 Zed 入口时会备份原配置，保留其它 Task、快捷键和注释。不要将程序留在临时解压目录；Zed 会记住它的绝对路径，移动后需要重新运行 `install-zed`。
+
+`--auto-preview` 会让所有 Markdown 文件默认以预览打开。想保留当前打开方式，安装时省略此参数；安装后也可按[预览设置](#预览设置)调整。
 
 下文中的 `md-translator` 表示安装后的程序。若终端提示找不到命令，macOS / Linux 使用 `"$HOME/.local/bin/md-translator"`，Windows PowerShell 使用 `& "$env:LOCALAPPDATA\Programs\md-translator\md-translator.exe"` 替代命令名。Zed Task 不依赖终端的 PATH 设置。
 
@@ -53,13 +55,15 @@ Windows 将程序复制到上述安装目录后，使用 README 的最后两条 
 
 ## 独立配置向导
 
-在命令面板的 `task: spawn` 中选择 **Markdown: 配置翻译服务**，终端会展开并获得焦点。也可在本机终端运行 `md-translator configure`。
+在 Zed 命令面板运行 `task: spawn`，选择 **Markdown: 配置翻译服务**，在打开的任务终端中填写配置。也可在本机终端运行 `md-translator configure`。
 
 向导依次填写接口地址、模型名称、鉴权方式、隐藏输入的 API Key、请求超时。鉴权只提供“保存 API Key”和“无需鉴权”。再次配置时可以编辑现有值；同一服务的密钥可留空保留。改变接口地址后，需要为新地址填写密钥。最后选择“保存”“保存并测试”或“取消”；退出向导不会提交未确认的配置。
 
-默认只保存。“保存并测试”使用固定短文本发出一次模型请求；成功结果不写入文档翻译缓存。测试失败时已保存的配置保留，可修改后重试。
+默认只保存，不请求模型。想确认服务能否使用，可选择“保存并测试”，发送一段固定短文本；这次请求也可能计费。测试失败时已保存的配置保留，可修改后重试。
 
-独立配置只使用一个服务、一个模型，不读取 Zed LLM provider、Edit Prediction 或系统钥匙串。模型必须支持 OpenAI 兼容的 Chat Completions。
+模型必须支持 OpenAI 兼容的 Chat Completions。翻译服务需单独配置，不沿用 Zed 中的模型或 API Key；一次只使用一个服务、一个模型。
+
+向导将设置保存到[数据目录](#集中存储与路径)的 `config.json`，例如：
 
 ```json
 {
@@ -73,11 +77,11 @@ Windows 将程序复制到上述安装目录后，使用 README 的最后两条 
 }
 ```
 
-`auth` 可以是 `api_key` 或 `none`。密钥由向导保存到独立的 `credentials.json`，按服务标识与请求地址绑定，不写入命令行、日志或译文缓存。凭据文件是明文；macOS/Linux 上新建目录权限为 0700，配置和凭据文件权限为 0600。
+`auth` 可以是 `api_key` 或 `none`。API Key 由向导保存到独立的 `credentials.json`，不写入命令行、日志或译文缓存。**凭据文件是明文，请勿公开或提交到代码仓库**；macOS / Linux 上新建的配置和凭据文件仅当前用户可读写。分享配置排查问题时，不要附上凭据文件。
 
-可选高级配置包括 provider 下的 `reasoning_effort`、`max_completion_tokens` 或 `max_tokens`（输出上限只能选择一项）、`custom_headers`。未声明时不猜测厂商参数。`custom_headers` 不允许覆盖鉴权或 Content-Type。
+服务要求额外参数时，可在 `config.json` 的 `provider` 下添加 `reasoning_effort`、`max_completion_tokens` 或 `max_tokens`（输出上限只能选择一项）、`custom_headers`，取值以服务商说明为准。`custom_headers` 不允许覆盖鉴权或 Content-Type。
 
-工具只使用配置文件和显式命令行参数，不读取环境变量中的密钥或代理设置，也不支持配置中的环境变量插值。HTTP 请求直连配置地址；旧 `--api-key-env` 参数已移除。
+工具不读取环境变量中的密钥或代理设置，也不支持配置中的环境变量插值。请填写程序所在机器能够直接访问的服务地址；旧 `--api-key-env` 参数已移除，API Key 请通过向导保存。
 
 修改非敏感配置可以使用参数；密钥必须在终端中隐藏输入：
 
@@ -97,50 +101,55 @@ md-translator configure --test
 | 翻译全文或打开缓存 | `Ctrl+Shift+T` | `Ctrl+K` 后按 `Alt+T` |
 | 强制重新翻译 | `Ctrl+Option+Shift+T` | `Ctrl+K` 后按 `Alt+Shift+T` |
 
-任务先保存当前文档，读取最新磁盘内容。未命名文档需要先保存为 `.md` 或 `.markdown`。固定按英译中处理；中文或中英混排文档也会发送给模型，不额外检测语言。
+Task 会先保存当前修改；未命名文档需要先保存为 `.md` 或 `.markdown`。翻译固定为简体中文，中文或中英混排文档也会发送给模型；若只需阅读已有中文内容，无需运行翻译。
 
-首次翻译打开 `文件名 · 简体中文.md`，显示“正在翻译全文”，成功后更新同一份预览。已有完整缓存时直接展示，不请求模型，也不读取密钥。译文顶部提供“返回原文”链接；需要并排阅读时可手动拖动标签页。
+首次翻译打开 `文件名 · 简体中文.md`，等待完成后即可阅读，无需关闭再打开。已有译文时直接展示，不请求模型；原文或模型配置改变后会重新翻译。译文顶部提供“返回原文”链接；需要并排阅读时可手动拖动标签页。
 
 本地译文在原文所在的项目窗口中以标签页打开，不新增 Project Panel 条目。旧版本已经加入 Project Panel 的缓存条目，请右键选择 **Remove from Project** 后再从原文打开译文；此操作保留磁盘上的缓存文件。
 
-在缓存预览中重译时，先返回项目内原文。Zed 的任务文件变量依赖可见项目目录。
+需要重新翻译时，先点击“返回原文”，再触发翻译 Task。
 
-提示尚未配置服务时，先运行配置向导，再重新触发翻译。
+### 预览设置
+
+| 想要的阅读方式 | 操作 |
+| --- | --- |
+| 只预览当前译文 | 在译文标签页点击 **Preview** |
+| 所有 Markdown 文件默认进入预览 | 在本机运行 `md-translator install-zed --auto-preview` |
+| 恢复默认编辑 Markdown | 在本机 Zed 的 `settings.json` 中，将 `markdown_preview` 下的 `open_markdown_files_in_preview` 设为 `false` |
+
+安装入口时指定过自定义路径，请在重新运行 `install-zed` 时带上原参数。Remote Project 的预览偏好也在本机 Zed 中设置；不要在远端运行 `install-zed --auto-preview`。
 
 ## 集中存储与路径
 
-配置、密钥和缓存保存在程序运行的机器上。Remote Project 使用远端账户的目录；本机项目使用本机账户的目录。默认使用系统账户的用户目录，在其下创建统一的 `.md-translator`：
+配置、密钥和缓存保存在程序运行的机器上。Remote Project 使用远端账户的目录；本机项目使用本机账户的目录。默认保存在该账户的 `.md-translator` 目录：
 
 ```text
 ~/.md-translator/
-├── config.json
-├── credentials.json
-└── cache/
-    ├── translations/（完整成功结果）
-    └── views/<document-and-provider-key>/
-        └── 文件名 · 简体中文.md
+├── config.json       （服务配置）
+├── credentials.json  （API Key，明文）
+└── cache/            （译文）
 ```
 
-更换服务、模型或请求选项后会重新翻译；只轮换同一服务的 API Key 仍可使用已有缓存。强制重译中断时保留上次成功结果。重启不会清空缓存，当前不自动过期或清理。迁移存储位置时，请复制完整数据目录，保留配置、凭据和缓存的关联文件。
+更换服务、模型或请求选项后会重新翻译；只轮换同一服务的 API Key 仍可使用已有缓存。缓存长期保留，不自动过期或清理。迁移存储位置时，请复制完整数据目录。
 
-每次触发都会读取当前原文内容计算缓存标识。原文改变后不会误用旧内容的缓存；当前内容没有对应结果时，重新翻译全文。只保存而内容未变，或将内容改回曾经翻译过的版本，仍可复用该版本的缓存。通过 Zed Task 触发时会先保存当前修改。
+原文改变后会重新翻译全文。只保存而内容未变，或将内容改回曾经翻译过的版本，仍可复用该版本的译文。
 
-原文内容改变后仍更新同一预览文件，无需手动更换标签页。不同机器的缓存各自独立。本机预览中的相对图片和文件链接按原文所在目录查找；远端资源限制见[SSH Remote Project](#ssh-remote-project)。同一文档正在翻译时，再次触发不会重复请求。
+原文内容改变后仍更新同一预览，无需手动更换标签页。本机预览中的相对图片和文件链接按原文所在目录查找；远端资源限制见[SSH Remote Project](#ssh-remote-project)。同一文档正在翻译时，再次触发不会重复请求。
 
-默认目录不受 `HOME` / `XDG_*` 覆盖（Unix 上通过系统账户记录确定用户目录）。整体迁移位置使用显式参数：
+需要更换数据目录时，使用显式参数；修改 `HOME` / `XDG_*` 不会改变存储位置：
 
 ```sh
 md-translator --data-dir /absolute/path/md-translator configure
 md-translator --data-dir /absolute/path/md-translator install-zed
 ```
 
-安装器会把显式存储参数写进管理的 Task，确保向导与翻译使用相同位置。也支持单独的 `--config`、`--cache-dir`；凭据始终位于配置文件同目录。
+配置服务和安装 Task 时使用相同的路径参数，之后从 Zed 触发即可使用该位置。也支持用 `--config`、`--cache-dir` 分别指定配置文件和缓存目录；凭据始终位于配置文件同目录。
 
 `--zed-config` 只指定安装 Task / 快捷键和检查预览设置所用的 Zed 配置目录，不用于读取模型或密钥。Zed CLI 默认从常见安装路径查找；非标准安装可在独立配置中设置 `zed_cli` 的绝对路径，或传入 `--zed-cli /absolute/path/to/zed`。
 
 从本机终端翻译时，可在 `translate` 命令中添加 `--project-root /absolute/path/to/project`，指定已在 Zed 打开的本机项目，普通文件夹项目也适用。Zed 翻译 Task 会自动传入所属项目；本地文件未指定时，按原文所在目录定位窗口。
 
-0.2 及之前版本的 Zed provider、环境变量鉴权和偏好格式不再使用，需要运行配置向导。旧缓存目录不自动删除；已有缓存仍可通过显式 `--cache-dir` 使用；只有原文和完整 provider 指纹一致时才命中。
+从 0.2 或更早版本升级后，请重新运行配置向导，不再沿用 Zed provider 或环境变量中的密钥。旧缓存目录不自动删除；可通过 `--cache-dir` 指向原目录，兼容且原文、服务配置未变的译文可继续使用，其余文档会重新翻译。
 
 ## SSH Remote Project
 
@@ -171,7 +180,7 @@ md-translator --data-dir /absolute/path/md-translator install-zed
 2. 任务终端出现 `file://...` 译文链接。macOS 按住 **Cmd** 点击；Linux / Windows 按住 **Ctrl** 点击。请在当前 Zed 任务终端点击，让它按所属远端项目打开文件。
 3. 译文以标签页打开；尚未完成时显示进度，完成后更新同一文件。未启用默认预览时，手动点击 **Preview**。
 
-任务结束后终端保留，缓存命中也会输出链接。链接中的中文、空格等会编码；直接点击完整链接即可。如果点击未生效，复制终端最后输出的原始绝对路径，在当前 Remote Project 中用打开文件操作选择该文件。
+任务结束后仍可点击终端中的完整链接，再次打开已有译文也用同样的方式。如果点击未生效，复制终端最后输出的原始绝对路径，在当前 Remote Project 中用打开文件操作选择该文件。
 
 缓存无需加入 Project Panel；从缓存预览重译时，先返回原文。返回原文和普通文件链接按远端路径打开。项目外缓存中的图片仍受 Zed 远端预览的路径解析限制，可能不显示，请返回原文查看；程序不下载或复制图片。
 
@@ -199,11 +208,24 @@ md-translator --data-dir /absolute/remote/data install-zed --remote --project-ro
 
 ## 翻译和失败恢复
 
-每份文档使用一次整篇主请求。模型直接返回 Markdown；代码、公式、路径和链接目标通过保护标记保留，链接显示文字、图片替代文字和普通引文参与翻译。
+每次翻译会将整篇文档发送给配置的服务，可能产生费用；包含敏感内容时，请先确认该服务适合处理这些数据。代码、公式、路径和链接目标按原文保留，链接显示文字、图片替代文字和普通引文会翻译。
 
-译文完整性检查失败时，最多发出 **一次整篇纠正请求**，因此一次翻译最多产生两次模型请求。服务错误、额度不足、输出截断等直接报告，不自动循环重试、分片或切换模型。在任务终端中按 `Ctrl+C` 可取消。
+译文未能保留代码、路径等内容时，会自动再请求一次纠正，因此一次翻译最多产生两次模型请求，并可能增加费用。服务错误、额度不足或输出截断时会停止并提示原因，不自动重试、分片或切换模型。在任务终端中按 `Ctrl+C` 可取消。
 
-成功译文才进入缓存。强制重译失败时保留上次完整结果；退出进行中的翻译不保存部分结果。超出模型上下文或输出上限时，可以调整模型或输出限制；不会截掉原文或把部分译文标为完成。
+翻译失败或取消后，上次成功的译文会保留；没有成功过的文档需要重新运行翻译。未完成的内容不会保存为译文。
+
+以下使用本机 Task 名称；Remote Project 请选名称含 **(Remote)** 的对应 Task。
+
+| 遇到的问题 | 处理方式 |
+| --- | --- |
+| 尚未配置服务、鉴权失败 | 运行 **Markdown: 配置翻译服务**，检查地址、模型、API Key 和账户权限，再选择“保存并测试” |
+| 连接失败或超时 | 确认程序所在机器能直接访问服务，必要时在向导中增加请求超时，再运行 **Markdown: 翻译全文** |
+| 额度不足或请求受限 | 检查服务账户额度和用量限制，恢复后重新运行翻译 |
+| 文档超出模型上下文限制 | 选择支持更长输入的模型；程序不自动拆分文档 |
+| 输出被截断 | 在[配置文件](#独立配置向导)中提高输出上限，或更换支持更长输出的模型 |
+| 纠正后仍无法保留代码、路径等内容 | 尝试更换模型后重新翻译；如需继续阅读，可使用上次成功的译文 |
+
+排除问题后通常运行 **Markdown: 翻译全文** 即可；只想重新生成已有译文时，再选择 **Markdown: 重新翻译全文**。
 
 Frontmatter 和原始 HTML 按原文保留。完整性检查不等于语义质量保证；标题翻译后，原文中依赖英文标题的 `#fragment` 目录链接目前可能失效。
 
@@ -250,7 +272,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\md-translator-ins
 if ($LASTEXITCODE -eq 0) { Remove-Item "$env:LOCALAPPDATA\Programs\md-translator\md-translator.exe" }
 ```
 
-自定义安装目录时请替换程序路径；安装时指定过 `--zed-config`，卸载入口时也要带上该参数。`uninstall-zed --dry-run` 可以先查看会改动的文件。命令只移除本工具的三个 Task 及指向这些 Task 的快捷键，修改前备份，其它配置保留。**所有 Markdown 默认预览**的偏好保留；需要关闭时，在 Zed 的 `settings.json` 中将 `markdown_preview` 下的 `open_markdown_files_in_preview` 设为 `false`。
+自定义安装目录时请替换程序路径；安装时指定过 `--zed-config`，卸载入口时也要带上该参数。`uninstall-zed --dry-run` 可以先查看会改动的文件。命令只移除本工具的三个 Task 及指向这些 Task 的快捷键，修改前备份，其它配置保留。**所有 Markdown 默认预览**的偏好保留；需要关闭时，按[预览设置](#预览设置)恢复默认编辑方式。
 
 **SSH Remote Project**：在删除远端程序前，对安装过 Task 的每个远端项目运行：
 
