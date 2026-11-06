@@ -222,13 +222,13 @@ md-translator translate --file /path/to/README.md --no-open
 需要退回某个已发布版本时，macOS / Linux 在安装命令末尾指定版本：
 
 ```sh
-curl -fsSL https://github.com/againest1/md-translator/releases/latest/download/install.sh | sh -s -- --version v0.4.0
+curl -fsSL https://github.com/againest1/md-translator/releases/latest/download/install.sh | sh -s -- --version v0.4.1
 ```
 
 Windows 下载 README 中的安装脚本后，指定版本运行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\md-translator-install.ps1" -Version v0.4.0
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\md-translator-install.ps1" -Version v0.4.1
 ```
 
 将示例版本换成[发布列表](https://github.com/againest1/md-translator/releases)中存在的版本。回退前复制备份整个数据目录，并先阅读该版本说明，旧版本可能不支持较新的配置或缓存。程序不自动检查或后台安装更新。

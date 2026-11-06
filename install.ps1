@@ -5,7 +5,7 @@
 $ErrorActionPreference = 'Stop'
 if (-not [Environment]::Is64BitOperatingSystem) { throw '需要 64 位 Windows。' }
 if ($Version -ne 'latest' -and $Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
-    throw '版本格式应为 v0.4.0。'
+    throw '版本格式应为 v0.4.1。'
 }
 if (-not [IO.Path]::IsPathRooted($InstallDir)) { throw 'InstallDir 必须是绝对路径。' }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

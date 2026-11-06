@@ -45,7 +45,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools
-          echo "CARGO_TARGET_$(echo "$TARGET" | tr '[:lower:]-' '[:upper:]_')_LINKER=musl-gcc" >> "$GITHUB_ENV"
+          # Use musl headers for C dependencies, but let Rust select the native
+          # linker. Ubuntu's musl-gcc wrapper breaks x86_64 static PIE startup.
           echo 'CC=musl-gcc' >> "$GITHUB_ENV"
       - name: Check version and source
         run: |
@@ -66,7 +67,6 @@ jobs:
           cp "target/$TARGET/release/$binary" package/
           cp README.md USAGE.md LICENSE package/
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
-          test "$("package/$binary" --version)" = "md-translator $version"
           if [ "$RUNNER_OS" = Linux ]; then
             file "package/$binary"
             if readelf -l "package/$binary" | grep -q INTERP; then
@@ -74,6 +74,9 @@ jobs:
               exit 1
             fi
           fi
+          reported=$("package/$binary" --version)
+          printf 'Packaged program: %s\n' "$reported"
+          test "$reported" = "md-translator $version"
           if [ "$RUNNER_OS" = Windows ]; then
             cp install.ps1 package/
             pwsh -NoProfile -Command 'Compress-Archive -Path package/* -DestinationPath dist/md-translator-x86_64-pc-windows-msvc.zip'

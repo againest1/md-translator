@@ -15,7 +15,7 @@ while [ "$#" -gt 0 ]; do
             shift 2 ;;
         --help|-h)
             printf '%s\n' '安装或更新 md-translator；保留配置、密钥和缓存。' \
-                '用法：sh install.sh [--version v0.4.0] [--bin-dir /absolute/path]' \
+                '用法：sh install.sh [--version v0.4.1] [--bin-dir /absolute/path]' \
                 '默认安装到 ~/.local/bin；不需要 sudo。'
             exit 0 ;;
         *) fail "未知选项：$1（使用 --help 查看帮助）" ;;
@@ -23,7 +23,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$bin_dir" in /*) ;; *) fail '--bin-dir 必须是绝对路径。' ;; esac
 if [ "$version" != latest ]; then
-    printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail '版本格式应为 v0.4.0。'
+    printf '%s\n' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail '版本格式应为 v0.4.1。'
 fi
 case "$(uname -s)-$(uname -m)" in
     Darwin-arm64) target=aarch64-apple-darwin ;;
