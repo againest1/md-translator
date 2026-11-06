@@ -13,6 +13,29 @@ pub fn hash(bytes: impl AsRef<[u8]>) -> String {
     format!("{:x}", Sha256::digest(bytes.as_ref()))
 }
 
+pub fn source_path(input: &str) -> Result<PathBuf> {
+    anyhow::ensure!(
+        !input.is_empty() && !input.chars().any(char::is_control),
+        "文件路径不能为空或包含控制字符"
+    );
+    let drive_path = input.as_bytes().get(1) == Some(&b':')
+        && input.as_bytes()[0].is_ascii_alphabetic()
+        && input
+            .as_bytes()
+            .get(2)
+            .is_some_and(|b| matches!(b, b'/' | b'\\'));
+    let scp_address = !drive_path
+        && input
+            .split(['/', '\\'])
+            .next()
+            .is_some_and(|part| part.contains(':'));
+    anyhow::ensure!(
+        !input.contains("://") && !scp_address,
+        "不再支持 SSH/SFTP 文件地址；请在远端运行 md-translator translate --remote --file /远端/原文.md。含冒号的文件名请加 ./ 前缀。"
+    );
+    Ok(PathBuf::from(input))
+}
+
 pub fn home_dir() -> Result<PathBuf> {
     #[cfg(unix)]
     {

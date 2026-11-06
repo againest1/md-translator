@@ -3,7 +3,6 @@ use clap::{Parser, Subcommand};
 use md_translator::{
     client::translate_whole,
     config::{AuthMode, Preferences, credential, credentials_path, save_key},
-    remote::Source,
     storage, wizard,
     workflow::{TranslateOptions, translate_file},
     zed,
@@ -31,7 +30,7 @@ struct Cli {
     zed_config: Option<PathBuf>,
     #[arg(long, global = true, help = "独立配置文件；凭据文件放在相同目录")]
     config: Option<PathBuf>,
-    #[arg(long, global = true, help = "本机译文缓存目录，适用于本地和 SSH 文件")]
+    #[arg(long, global = true, help = "程序运行所在机器上的译文缓存目录")]
     cache_dir: Option<PathBuf>,
     #[arg(long, global = true, help = "Zed CLI 的绝对路径")]
     zed_cli: Option<PathBuf>,
@@ -43,19 +42,21 @@ struct Cli {
 enum Command {
     /// 翻译整个 Markdown 文件；缓存命中时不发送请求
     Translate {
-        #[arg(
-            long,
-            help = "本地路径、[user@]host:path 或 ssh://[user@]host[:port]/path"
-        )]
-        file: String,
-        #[arg(long, help = "打开译文的本地 Zed 项目目录")]
+        #[arg(long, value_parser = storage::source_path, help = "程序运行所在机器上的 Markdown 文件路径")]
+        file: PathBuf,
+        #[arg(long, help = "原文所在的 Zed 项目目录")]
         project_root: Option<PathBuf>,
-        #[arg(long, hide = true, help = "已停用；请用 --cache-dir 指定本机缓存目录")]
+        #[arg(long, hide = true, help = "已停用；请在远端使用 --cache-dir")]
         remote_cache_dir: Option<PathBuf>,
         #[arg(long)]
         force: bool,
         #[arg(long)]
         no_open: bool,
+        #[arg(
+            long,
+            help = "在 Remote Project 中运行：输出可点击译文链接，不启动 Zed"
+        )]
+        remote: bool,
     },
     /// 安装 Zed Task、配置向导入口和快捷键，自动备份已有配置
     InstallZed {
@@ -63,6 +64,15 @@ enum Command {
         auto_preview: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(
+            long,
+            requires = "project_root",
+            conflicts_with = "auto_preview",
+            help = "在远端项目中安装点击打开译文的 Task"
+        )]
+        remote: bool,
+        #[arg(long, requires = "remote", help = "安装远端 Task 的项目目录")]
+        project_root: Option<PathBuf>,
     },
     /// 检查独立配置、缓存与预览；不请求模型，不显示密钥
     Doctor {
@@ -141,17 +151,19 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
             remote_cache_dir,
             force,
             no_open,
+            remote,
         } => {
             ensure!(
                 remote_cache_dir.is_none(),
-                "--remote-cache-dir 已停用；SSH 译文保存在本机，请使用 --cache-dir。"
+                "--remote-cache-dir 已停用；请在远端运行程序，用 --cache-dir 指定远端缓存目录。"
             );
             let result = translate_file(
                 &TranslateOptions {
-                    file: Source::parse(&file)?,
+                    file,
                     project_root,
                     force,
                     no_open,
+                    remote,
                     preferences: config,
                     cache_dir,
                     zed_cli: cli.zed_cli,
@@ -164,18 +176,33 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
         Command::InstallZed {
             auto_preview,
             dry_run,
+            remote,
+            project_root,
         } => {
-            let zed_config = match cli.zed_config {
-                Some(path) => path,
-                None => storage::zed_config_dir()?,
+            let changes = if remote {
+                ensure!(
+                    cli.zed_config.is_none(),
+                    "远端 Task 使用 --project-root 安装，不使用 --zed-config。"
+                );
+                zed::install_remote_tasks(
+                    project_root.as_deref().unwrap(),
+                    &std::env::current_exe()?,
+                    dry_run,
+                    &prefix,
+                )?
+            } else {
+                let zed_config = match cli.zed_config {
+                    Some(path) => path,
+                    None => storage::zed_config_dir()?,
+                };
+                zed::install_with_args(
+                    &zed_config,
+                    &std::env::current_exe()?,
+                    auto_preview,
+                    dry_run,
+                    &prefix,
+                )?
             };
-            let changes = zed::install_with_args(
-                &zed_config,
-                &std::env::current_exe()?,
-                auto_preview,
-                dry_run,
-                &prefix,
-            )?;
             println!(
                 "{}",
                 if dry_run {
@@ -193,11 +220,22 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
                     println!("  备份：{}", backup.display());
                 }
             }
-            println!("Task：Markdown: 配置翻译服务 / Markdown: 翻译全文 / Markdown: 重新翻译全文");
-            if cfg!(target_os = "macos") {
+            if remote {
+                println!(
+                    "Task：Markdown (Remote): 配置翻译服务 / Markdown (Remote): 翻译全文 / Markdown (Remote): 重新翻译全文"
+                );
+                println!(
+                    "在当前 Remote Project 的 task: spawn 中选择远端 Task；在任务终端 Cmd+Click / Ctrl+Click 译文链接。远端安装不修改本机快捷键和预览设置。"
+                );
+            } else if cfg!(target_os = "macos") {
                 println!("Ctrl+Shift+T：翻译全文；Ctrl+Option+Shift+T：强制重译。");
             } else {
                 println!("Ctrl+K 后按 Alt+T：翻译；Ctrl+K 后按 Alt+Shift+T：重译。");
+            }
+            if !remote {
+                println!(
+                    "Task：Markdown: 配置翻译服务 / Markdown: 翻译全文 / Markdown: 重新翻译全文"
+                );
             }
             if auto_preview {
                 println!("Markdown 文件默认以原生预览打开。");

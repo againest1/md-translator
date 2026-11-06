@@ -2,24 +2,27 @@ use crate::{
     cache::{CachePaths, source_from_cache},
     client::translate_whole,
     config::{Preferences, credential, credentials_path},
-    markdown::preview_markdown,
-    remote::{Source, read_document},
+    markdown::{preview_markdown, remote_preview_markdown},
     storage::{atomic_write, zed_cli},
     zed::open_in_zed,
 };
 use anyhow::{Context, Result, ensure};
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
 pub struct TranslateOptions {
-    pub file: Source,
+    pub file: PathBuf,
     pub project_root: Option<PathBuf>,
     pub cache_dir: PathBuf,
     pub preferences: PathBuf,
     pub zed_cli: Option<PathBuf>,
     pub force: bool,
     pub no_open: bool,
+    pub remote: bool,
 }
 
 pub struct Outcome {
@@ -43,14 +46,28 @@ pub(crate) fn escape(value: &str) -> String {
         .collect()
 }
 
-fn header(source: &Source, model: &str) -> Result<String> {
-    let url = match source {
-        Source::Local(path) => Url::from_file_path(path)
-            .map_err(|_| anyhow::anyhow!("无法构造原文路径 URL"))?
-            .to_string(),
-        Source::Remote(file) => file.source_link(&file.path)?,
-    };
-    Ok(header_with_url(&url, model))
+fn header(source: &Path, model: &str, remote: bool) -> Result<String> {
+    let url = Url::from_file_path(source).map_err(|_| anyhow::anyhow!("无法构造原文路径 URL"))?;
+    // Plain paths are opened within the preview's remote workspace.
+    Ok(header_with_url(
+        if remote { url.path() } else { url.as_str() },
+        model,
+    ))
+}
+
+fn terminal_preview(path: &Path, remote: bool) -> Result<()> {
+    if remote {
+        let url = Url::from_file_path(path).map_err(|_| anyhow::anyhow!("无法构造译文链接"))?;
+        let url = url
+            .as_str()
+            .replace('\'', "%27")
+            .replace('(', "%28")
+            .replace(')', "%29");
+        eprintln!(
+            "在当前 Zed 任务终端 Cmd+Click（macOS）或 Ctrl+Click（Linux/Windows）打开译文：\n{url}"
+        );
+    }
+    Ok(())
 }
 
 pub(crate) fn header_with_url(url: &str, model: &str) -> String {
@@ -63,10 +80,11 @@ pub(crate) fn header_with_url(url: &str, model: &str) -> String {
 
 fn show_result(
     paths: &CachePaths,
-    source: &Source,
+    source: &Path,
     heading: &str,
     markdown: &str,
     warnings: &[String],
+    remote: bool,
 ) -> Result<()> {
     let notices = if warnings.is_empty() {
         String::new()
@@ -80,9 +98,10 @@ fn show_result(
                 .join("；")
         )
     };
-    let preview = match source {
-        Source::Local(path) => preview_markdown(markdown, path)?,
-        Source::Remote(_) => markdown.to_owned(),
+    let preview = if remote {
+        remote_preview_markdown(markdown, source)?
+    } else {
+        preview_markdown(markdown, source)?
     };
     atomic_write(&paths.view, format!("{heading}{notices}{preview}"))
 }
@@ -91,38 +110,11 @@ pub async fn translate_file(
     options: &TranslateOptions,
     cancel: &CancellationToken,
 ) -> Result<Outcome> {
-    let file = match &options.file {
-        Source::Local(path) => source_from_cache(path, &options.cache_dir)?,
-        Source::Remote(file) => Source::Remote(file.clone()),
-    };
+    let file = source_from_cache(&options.file, &options.cache_dir)?;
     let preferences = Preferences::load(&options.preferences)?;
-    let (file, source) = match file {
-        Source::Local(path) => {
-            let text = fs::read_to_string(&path).context("无法读取 UTF-8 Markdown 原文")?;
-            (Source::Local(path), text)
-        }
-        Source::Remote(file) => {
-            if preferences
-                .ssh
-                .as_ref()
-                .is_some_and(|ssh| ssh.cache_dir.is_some())
-            {
-                eprintln!(
-                    "ssh.cache_dir 已停用；SSH 译文使用本机缓存目录，可用 --cache-dir 指定。"
-                );
-            }
-            let (file, text) =
-                read_document(file, &preferences.ssh.clone().unwrap_or_default(), cancel).await?;
-            (Source::Remote(file), text)
-        }
-    };
-    let source_path = match &file {
-        Source::Local(path) => path,
-        Source::Remote(file) => &file.path,
-    };
+    let source = fs::read_to_string(&file).context("无法读取 UTF-8 Markdown 原文")?;
     ensure!(
-        source_path
-            .extension()
+        file.extension()
             .and_then(|s| s.to_str())
             .is_some_and(|s| ["md", "markdown"].contains(&s.to_ascii_lowercase().as_str())),
         "仅支持 .md / .markdown 文件"
@@ -135,13 +127,11 @@ pub async fn translate_file(
             ensure!(root.is_dir(), "--project-root 必须是目录");
             Some(root)
         }
-        None => match &file {
-            Source::Local(path) => Some(path.parent().context("原文路径缺少父目录")?.to_path_buf()),
-            Source::Remote(_) => None,
-        },
+        None => Some(file.parent().context("原文路径缺少父目录")?.to_path_buf()),
     };
     let provider = preferences.provider()?;
-    let zed_binary = if options.no_open {
+    let no_open = options.no_open || options.remote;
+    let zed_binary = if no_open {
         None
     } else {
         Some(
@@ -154,18 +144,17 @@ pub async fn translate_file(
         )
     };
     let timeout = preferences.timeout()?;
-    let paths = match &file {
-        Source::Local(path) => CachePaths::new(&options.cache_dir, path, &source, &provider),
-        Source::Remote(file) => CachePaths::remote(&options.cache_dir, file, &source, &provider)?,
-    };
-    let heading = header(&file, &provider.model)?;
+    let cache_dir = std::path::absolute(&options.cache_dir)?;
+    let paths = CachePaths::new(&cache_dir, &file, &source, &provider);
+    let heading = header(&file, &provider.model, options.remote)?;
     paths.record_source(&file)?;
     let cached = paths.read();
     if !options.force
         && let Some((markdown, warnings)) = &cached
     {
-        show_result(&paths, &file, &heading, markdown, warnings)?;
-        if !options.no_open {
+        show_result(&paths, &file, &heading, markdown, warnings, options.remote)?;
+        terminal_preview(&paths.view, options.remote)?;
+        if !no_open {
             open_in_zed(
                 project_dir.as_deref(),
                 &paths.view,
@@ -173,7 +162,7 @@ pub async fn translate_file(
             )
             .await?;
         }
-        eprintln!("已打开完整缓存译文，未请求模型。");
+        eprintln!("完整缓存译文已就绪，未请求模型。");
         return Ok(Outcome {
             status: "cached",
             path: paths.view,
@@ -188,7 +177,8 @@ pub async fn translate_file(
                 format!("{heading}> 同一份文档正在翻译，请等待当前任务。\n"),
             )?;
         }
-        if !options.no_open {
+        terminal_preview(&paths.view, options.remote)?;
+        if !no_open {
             open_in_zed(
                 project_dir.as_deref(),
                 &paths.view,
@@ -206,8 +196,16 @@ pub async fn translate_file(
     if !options.force
         && let Some((markdown, warnings)) = paths.read()
     {
-        show_result(&paths, &file, &heading, &markdown, &warnings)?;
-        if !options.no_open {
+        show_result(
+            &paths,
+            &file,
+            &heading,
+            &markdown,
+            &warnings,
+            options.remote,
+        )?;
+        terminal_preview(&paths.view, options.remote)?;
+        if !no_open {
             open_in_zed(
                 project_dir.as_deref(),
                 &paths.view,
@@ -234,7 +232,8 @@ pub async fn translate_file(
             credentials.key
         };
         atomic_write(&paths.view, format!("{heading}> 正在翻译全文…\n"))?;
-        if !options.no_open {
+        terminal_preview(&paths.view, options.remote)?;
+        if !no_open {
             open_in_zed(
                 project_dir.as_deref(),
                 &paths.view,
@@ -260,12 +259,14 @@ pub async fn translate_file(
             &heading,
             &translated.markdown,
             &translated.warnings,
+            options.remote,
         )?;
         Ok::<_, anyhow::Error>(translated.requests)
     };
     match execute.await {
         Ok(requests) => {
             eprintln!("整篇翻译完成，成功结果已缓存（{requests} 次请求）。");
+            terminal_preview(&paths.view, options.remote)?;
             Ok(Outcome {
                 status: "translated",
                 path: paths.view,
@@ -286,12 +287,16 @@ pub async fn translate_file(
                     &format!("{heading}{detail}> 以下保留上次成功译文。\n\n"),
                     &markdown,
                     &warnings,
+                    options.remote,
                 );
             } else {
                 let _ = atomic_write(
                     &paths.view,
                     format!("{heading}{detail}请检查错误后从原文重新发起翻译。\n"),
                 );
+            }
+            if paths.view.is_file() {
+                let _ = terminal_preview(&paths.view, options.remote);
             }
             Err(error)
         }

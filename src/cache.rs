@@ -1,7 +1,6 @@
 use crate::{
     client::{PIPELINE_VERSION, SYSTEM_PROMPT},
     config::Provider,
-    remote::{RemoteFile, Source},
     storage::{atomic_write, hash, private_dir},
 };
 use anyhow::{Context, Result};
@@ -59,31 +58,6 @@ impl Drop for DocumentLock {
 
 impl CachePaths {
     pub fn new(root: &Path, source_path: &Path, source: &str, provider: &Provider) -> Self {
-        Self::with_identity(root, source_path, &json!(source_path), source, provider)
-    }
-
-    pub fn remote(
-        root: &Path,
-        file: &RemoteFile,
-        source: &str,
-        provider: &Provider,
-    ) -> Result<Self> {
-        Ok(Self::with_identity(
-            root,
-            &file.path,
-            &json!(file.uri_for(&file.path)?),
-            source,
-            provider,
-        ))
-    }
-
-    fn with_identity(
-        root: &Path,
-        source_path: &Path,
-        identity: &serde_json::Value,
-        source: &str,
-        provider: &Provider,
-    ) -> Self {
         let key = hash(
             serde_json::to_vec(
                 &json!({"source":hash(source),"provider":provider.fingerprint(),
@@ -92,7 +66,7 @@ impl CachePaths {
             .unwrap(),
         );
         let view_key =
-            hash(serde_json::to_vec(&json!([identity, provider.fingerprint()])).unwrap());
+            hash(serde_json::to_vec(&json!([source_path, provider.fingerprint()])).unwrap());
         let view_dir = root.join("views").join(view_key);
         let stem = source_path
             .file_stem()
@@ -139,36 +113,29 @@ impl CachePaths {
         Ok(())
     }
 
-    pub fn record_source(&self, source: &Source) -> Result<()> {
-        let record = match source {
-            Source::Local(path) => json!({"path":path}),
-            Source::Remote(file) => json!({"uri":file.uri_for(&file.path)?}),
-        };
+    pub fn record_source(&self, source: &Path) -> Result<()> {
+        let record = json!({"path":source});
         atomic_write(&self.source_record, serde_json::to_vec(&record)?)
     }
 }
 
-pub fn source_from_cache(path: &Path, root: &Path) -> Result<Source> {
+pub fn source_from_cache(path: &Path, root: &Path) -> Result<PathBuf> {
     let path = fs::canonicalize(path).with_context(|| format!("无法打开 {}", path.display()))?;
     let root = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     if path.starts_with(root.join("views")) {
         let source: serde_json::Value =
             serde_json::from_slice(&fs::read(path.parent().unwrap().join("source.json"))?)?;
-        if let Some(uri) = source["uri"].as_str() {
-            let original = Source::parse(uri)?;
-            anyhow::ensure!(
-                matches!(original, Source::Remote(_)),
-                "缓存中的 SSH 原文地址无效"
-            );
-            return Ok(original);
-        }
+        anyhow::ensure!(
+            source.get("uri").is_none(),
+            "这是旧版 SSH 文件缓存；请在远端安装 md-translator，并从远端原文重新翻译。旧缓存未修改。"
+        );
         let original = PathBuf::from(
             source["path"]
                 .as_str()
                 .context("缓存缺少原文路径，请从原文发起翻译")?,
         );
         anyhow::ensure!(!original.starts_with(&root), "缓存原文路径无效");
-        return Ok(Source::Local(fs::canonicalize(original)?));
+        return Ok(fs::canonicalize(original)?);
     }
-    Ok(Source::Local(path))
+    Ok(path)
 }

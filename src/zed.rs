@@ -12,6 +12,9 @@ use std::{
 pub const TRANSLATE: &str = "Markdown: 翻译全文";
 pub const RETRANSLATE: &str = "Markdown: 重新翻译全文";
 pub const CONFIGURE: &str = "Markdown: 配置翻译服务";
+pub const REMOTE_TRANSLATE: &str = "Markdown (Remote): 翻译全文";
+pub const REMOTE_RETRANSLATE: &str = "Markdown (Remote): 重新翻译全文";
+pub const REMOTE_CONFIGURE: &str = "Markdown (Remote): 配置翻译服务";
 const CONTEXT: &str =
     "(Editor && mode == full && (extension == md || extension == markdown)) || MarkdownPreview";
 
@@ -60,14 +63,24 @@ fn set(object: &CstObject, key: &str, value: &Value) {
 }
 
 pub fn merge_tasks(text: &str, binary: &Path) -> Result<String> {
-    merge_tasks_with_args(text, binary, &[])
+    merge_tasks_with_args(text, binary, &[], false)
 }
 
-fn merge_tasks_with_args(text: &str, binary: &Path, prefix: &[String]) -> Result<String> {
+fn merge_tasks_with_args(
+    text: &str,
+    binary: &Path,
+    prefix: &[String],
+    remote: bool,
+) -> Result<String> {
     let root = CstRootNode::parse(text, &Default::default())?;
     let array = root.array_value().context("Zed tasks.json 必须是数组")?;
-    for label in [TRANSLATE, RETRANSLATE, CONFIGURE] {
-        let configuring = label == CONFIGURE;
+    let labels = if remote {
+        [REMOTE_TRANSLATE, REMOTE_RETRANSLATE, REMOTE_CONFIGURE]
+    } else {
+        [TRANSLATE, RETRANSLATE, CONFIGURE]
+    };
+    for label in labels {
+        let configuring = label == labels[2];
         let mut args = prefix.to_vec();
         args.extend(
             if configuring {
@@ -84,11 +97,14 @@ fn merge_tasks_with_args(text: &str, binary: &Path, prefix: &[String]) -> Result
             .into_iter()
             .map(String::from),
         );
-        if label == RETRANSLATE {
+        if remote && !configuring {
+            args.push("--remote".into());
+        }
+        if label == labels[1] {
             args.push("--force".into());
         }
         let value = json!({"label":label,"command":binary,"args":args,"save":"current",
-            "reveal":if configuring {"always"} else {"no_focus"},"hide":if configuring {"never"} else {"on_success"},"use_new_terminal":false,"allow_concurrent_runs":false,
+            "reveal":if configuring {"always"} else {"no_focus"},"hide":if configuring || remote {"never"} else {"on_success"},"use_new_terminal":false,"allow_concurrent_runs":false,
             "show_command":false,"show_summary":true});
         let existing = array
             .elements()
@@ -191,8 +207,35 @@ pub fn install_with_args(
     dry_run: bool,
     prefix: &[String],
 ) -> Result<Vec<Change>> {
+    install_files(config_dir, binary, auto_preview, dry_run, prefix, false)
+}
+
+pub fn install_remote_tasks(
+    project: &Path,
+    binary: &Path,
+    dry_run: bool,
+    prefix: &[String],
+) -> Result<Vec<Change>> {
+    let project = project
+        .canonicalize()
+        .context("无法读取 --project-root 目录")?;
+    ensure!(project.is_dir(), "--project-root 必须是目录");
+    install_files(&project.join(".zed"), binary, false, dry_run, prefix, true)
+}
+
+fn install_files(
+    config_dir: &Path,
+    binary: &Path,
+    auto_preview: bool,
+    dry_run: bool,
+    prefix: &[String],
+    remote: bool,
+) -> Result<Vec<Change>> {
     let mut changes = Vec::new();
     for name in ["tasks.json", "keymap.json", "settings.json"] {
+        if remote && name != "tasks.json" {
+            continue;
+        }
         if name == "settings.json" && !auto_preview {
             continue;
         }
@@ -208,7 +251,7 @@ pub fn install_with_args(
             "[]\n"
         });
         let mut after = match name {
-            "tasks.json" => merge_tasks_with_args(text, binary, prefix)?,
+            "tasks.json" => merge_tasks_with_args(text, binary, prefix, remote)?,
             "keymap.json" => merge_keymap(text)?,
             "settings.json" => {
                 ensure!(

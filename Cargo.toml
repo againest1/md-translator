@@ -12,8 +12,6 @@ dialoguer = { version = "0.12", default-features = false }
 directories = "6"
 fs2 = "0.4"
 jsonc-parser = { version = "0.34", features = ["serde", "serde_json", "preserve_order", "cst"] }
-openssh-sftp-client = { version = "0.15.12", default-features = false }
-percent-encoding = "2"
 pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

@@ -114,8 +114,9 @@ pub struct Preferences {
     pub request_timeout_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zed_cli: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ssh: Option<crate::remote::SshSettings>,
+    // Accept old configurations so their provider remains usable; never use SSH settings.
+    #[serde(rename = "ssh", skip_serializing)]
+    pub legacy_ssh: Option<Value>,
 }
 
 impl Preferences {
@@ -124,11 +125,17 @@ impl Preferences {
             return Ok(Self::default());
         }
         // Do not interpolate environment variables or silently accept legacy auth settings.
-        serde_json::from_value(read_jsonc(path)?)
-            .context("配置格式错误；请使用独立 provider 配置，环境变量鉴权已移除。")
+        let preferences: Self = serde_json::from_value(read_jsonc(path)?)
+            .context("配置格式错误；请使用独立 provider 配置，环境变量鉴权已移除。")?;
+        if preferences.legacy_ssh.is_some() {
+            eprintln!(
+                "ssh 配置已停用；请在原文所在机器运行 md-translator，重新保存配置会移除旧 ssh 设置。"
+            );
+        }
+        Ok(preferences)
     }
     pub fn provider(&self) -> Result<Provider> {
-        self.provider.as_ref().context("尚未配置翻译服务。请运行 configure，或在 Zed Task 中选择「Markdown: 配置翻译服务」。")?.resolve()
+        self.provider.as_ref().context("尚未配置翻译服务。请在程序运行的机器上运行 configure，或选择对应的「配置翻译服务」Task。")?.resolve()
     }
     pub fn timeout(&self) -> Result<Duration> {
         let seconds = self.request_timeout_seconds.unwrap_or(120);

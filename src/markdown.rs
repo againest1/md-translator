@@ -448,6 +448,14 @@ fn destination_span(source: &str, span: &Span, definition: bool) -> Option<Span>
 
 /// Resolve only a preview copy; cached Markdown stays independent of its storage location.
 pub fn preview_markdown(markdown: &str, original: &Path) -> Result<String> {
+    preview_resources(markdown, original, false)
+}
+
+pub fn remote_preview_markdown(markdown: &str, original: &Path) -> Result<String> {
+    preview_resources(markdown, original, true)
+}
+
+fn preview_resources(markdown: &str, original: &Path, remote: bool) -> Result<String> {
     let base = Url::from_directory_path(original.parent().ok_or_else(|| anyhow!("原文缺少目录"))?)
         .map_err(|_| anyhow!("无法构造原文目录 URL"))?;
     let parser = Parser::new_ext(markdown, options());
@@ -484,11 +492,14 @@ pub fn preview_markdown(markdown: &str, original: &Path) -> Result<String> {
         {
             continue;
         }
-        let absolute = base
-            .join(&destination)?
-            .to_string()
-            .replace('(', "%28")
-            .replace(')', "%29");
+        let url = base.join(&destination)?;
+        let absolute = if remote {
+            url.as_str().strip_prefix("file://").unwrap_or(url.as_str())
+        } else {
+            url.as_str()
+        }
+        .replace('(', "%28")
+        .replace(')', "%29");
         changes.push((span, absolute));
     }
     Ok(replace_ranges(markdown, changes))
