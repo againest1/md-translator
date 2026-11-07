@@ -18,6 +18,33 @@ pub const REMOTE_CONFIGURE: &str = "Markdown (Remote): 配置翻译服务";
 const CONTEXT: &str =
     "(Editor && mode == full && (extension == md || extension == markdown)) || MarkdownPreview";
 
+// Resolve on the machine running the Task, never on the machine installing it.
+#[cfg(not(windows))]
+fn task_launcher() -> (&'static str, Value) {
+    (
+        r#"exec "$(command -v md-translator || printf '%s/.local/bin/md-translator' "$HOME")""#,
+        json!({"program":"sh"}),
+    )
+}
+
+#[cfg(windows)]
+fn task_launcher() -> (&'static str, Value) {
+    (
+        r#"& { $ErrorActionPreference = 'Stop'; $tool = Get-Command md-translator -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($tool) { $binary = $tool.Source } else { $binary = Join-Path $env:LOCALAPPDATA 'Programs\md-translator\md-translator.exe' }; & $binary @args; exit $LASTEXITCODE }"#,
+        json!({"with_arguments":{"program":"powershell","args":["-NoProfile"]}}),
+    )
+}
+
+fn task_literal(value: &str) -> String {
+    // Zed joins Task arguments as shell text. Quote literal paths before writing them.
+    let escaped = if cfg!(windows) {
+        value.replace('\'', "''")
+    } else {
+        value.replace('\'', "'\\''")
+    };
+    format!("'{escaped}'")
+}
+
 pub async fn open_in_zed(project_dir: Option<&Path>, path: &Path, binary: &Path) -> Result<()> {
     // Select the project first. Adding the preview in that request would make it a visible root.
     if let Some(project_dir) = project_dir {
@@ -81,7 +108,22 @@ fn merge_tasks_with_args(
     };
     for label in labels {
         let configuring = label == labels[2];
-        let mut args = prefix.to_vec();
+        let command = if remote {
+            binary.to_string_lossy().into_owned()
+        } else {
+            task_launcher().0.to_owned()
+        };
+        let mut args: Vec<String> = prefix
+            .iter()
+            .enumerate()
+            .map(|(index, arg)| {
+                if !remote && index % 2 == 1 {
+                    task_literal(arg)
+                } else {
+                    arg.clone()
+                }
+            })
+            .collect();
         args.extend(
             if configuring {
                 vec!["configure"]
@@ -99,13 +141,36 @@ fn merge_tasks_with_args(
         );
         if remote && !configuring {
             args.push("--remote".into());
+        } else if !configuring {
+            args.push("--auto-remote".into());
         }
         if label == labels[1] {
             args.push("--force".into());
         }
-        let value = json!({"label":label,"command":binary,"args":args,"save":"current",
-            "reveal":if configuring {"always"} else {"no_focus"},"hide":if configuring || remote {"never"} else {"on_success"},"use_new_terminal":false,"allow_concurrent_runs":false,
+        if !remote {
+            for arg in &mut args {
+                let name = match arg.as_str() {
+                    "$ZED_FILE" => "MD_TRANSLATOR_TASK_FILE",
+                    "$ZED_WORKTREE_ROOT" => "MD_TRANSLATOR_TASK_ROOT",
+                    _ => continue,
+                };
+                *arg = if cfg!(windows) {
+                    format!("\"$env:{name}\"")
+                } else {
+                    format!("\"${name}\"")
+                };
+            }
+        }
+        let mut value = json!({"label":label,"command":command,"args":args,"save":"current",
+            "reveal":if configuring {"always"} else {"no_focus"},"hide":"never","use_new_terminal":false,"allow_concurrent_runs":false,
             "show_command":false,"show_summary":true});
+        if !remote {
+            value["shell"] = task_launcher().1;
+            if !configuring {
+                // Pass file paths as environment data, not shell source after Zed interpolation.
+                value["env"] = json!({"MD_TRANSLATOR_TASK_FILE":"$ZED_FILE","MD_TRANSLATOR_TASK_ROOT":"$ZED_WORKTREE_ROOT"});
+            }
+        }
         let existing = array
             .elements()
             .into_iter()
@@ -113,7 +178,14 @@ fn merge_tasks_with_args(
         if let Some(node) = existing {
             let object = node.as_object().context("已有翻译任务格式错误")?;
             for (key, v) in value.as_object().unwrap() {
-                set(&object, key, v);
+                if key == "env" {
+                    let env = object.object_value_or_set("env");
+                    for (key, value) in v.as_object().unwrap() {
+                        set(&env, key, value);
+                    }
+                } else {
+                    set(&object, key, v);
+                }
             }
         } else {
             array.append(input(&value));

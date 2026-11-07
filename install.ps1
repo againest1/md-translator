@@ -46,10 +46,12 @@ try {
     $staged = $null
     Write-Host "已安装 $Version：$destination"
     Write-Host '更新已保留配置、密钥和缓存。'
-    Write-Host '首次使用，运行以下两条命令：'
+    Write-Host '本机使用：运行 install-zed 安装或刷新入口；首次使用还需 configure 配置服务。'
     Write-Host ('  & "{0}" install-zed --auto-preview' -f $destination)
     Write-Host ('  & "{0}" configure' -f $destination)
     Write-Host '随后在 Zed 的 task: spawn 选择「Markdown: 翻译全文」。'
+    Write-Host 'macOS / Linux SSH Remote Project 请按使用指南在远端安装显式 --remote 项目 Task，选择 Markdown (Remote) 入口。'
+    Write-Host '远端译文在当前 Zed 任务终端 Cmd+Click / Ctrl+Click 链接打开。'
 } catch {
     throw "安装未完成：$_。请结束正在运行的翻译任务后重试，或到 GitHub Releases 手动下载。"
 } finally {

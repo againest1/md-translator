@@ -39,11 +39,11 @@ install -m 755 ./md-translator "$HOME/.local/bin/md-translator"
 "$HOME/.local/bin/md-translator" configure
 ```
 
-Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShell `install-zed` 命令，再按第二步配置服务。安装 Zed 入口时会备份原配置，保留其它 Task、快捷键和注释。不要将程序留在临时解压目录；Zed 会记住它的绝对路径，移动后需要重新运行 `install-zed`。
+Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShell `install-zed` 命令，再按第二步配置服务。安装 Zed 入口时会备份原配置，保留其它 Task、快捷键和注释。普通 Task 在执行机器的 PATH 中查找 `md-translator`，找不到时使用上述默认安装目录；不要将程序留在临时解压目录。使用自定义安装目录时，将该目录加入执行机器的 PATH。
 
 `--auto-preview` 会让所有 Markdown 文件默认以预览打开。想保留当前打开方式，安装时省略此参数；安装后也可按[预览设置](#预览设置)调整。
 
-下文中的 `md-translator` 表示安装后的程序。若终端提示找不到命令，macOS / Linux 使用 `"$HOME/.local/bin/md-translator"`，Windows PowerShell 使用 `& "$env:LOCALAPPDATA\Programs\md-translator\md-translator.exe"` 替代命令名。Zed Task 不依赖终端的 PATH 设置。
+下文中的 `md-translator` 表示安装后的程序。若终端提示找不到命令，macOS / Linux 使用 `"$HOME/.local/bin/md-translator"`，Windows PowerShell 使用 `& "$env:LOCALAPPDATA\Programs\md-translator\md-translator.exe"` 替代命令名。默认安装位置的程序无需额外设置 PATH 即可从普通 Zed Task 启动。
 
 ### 安装问题
 
@@ -56,6 +56,8 @@ Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShel
 | Windows 更新提示文件被占用 | 结束正在运行的翻译或配置 Task，关闭使用该程序的终端任务后重试 |
 | 安装成功，但本机翻译无法打开 Zed | 确认 Zed 已安装；非标准安装路径可按[集中存储与路径](#集中存储与路径)指定 `--zed-cli` |
 | 安装 Zed 入口提示快捷键冲突 | 在 Zed 的 `keymap.json` 中调整提示的冲突绑定后重跑 `install-zed`；冲突时不会覆盖已有配置 |
+| SSH 翻译报错仍显示本机程序路径 | 更新两端程序，并在本机重新运行 `install-zed` 刷新普通 Task，再从 `task: spawn` 启动；不要直接重跑旧任务终端中的命令 |
+| Task 提示找不到 `md-translator` | 在项目所在机器确认程序已安装到默认目录，或将自定义目录加入该机器的 PATH；远端检查需使用 Zed 的远端终端 |
 
 ## 独立配置向导
 
@@ -121,7 +123,7 @@ md-translator configure --timeout 180
 
 ## 日常使用
 
-本机使用：先在 Zed 中打开原文所在的本机项目。远端操作见[SSH Remote Project](#ssh-remote-project)。从 `task: spawn` 选择 **Markdown: 翻译全文** 或 **Markdown: 重新翻译全文**；快捷键只是另一种触发入口。
+先在 Zed 中打开原文所在的项目。从 `task: spawn` 选择 **Markdown: 翻译全文** 或 **Markdown: 重新翻译全文**；快捷键只是另一种触发入口。macOS / Linux 本机项目与 SSH Remote Project 共用这些入口，远端准备与其它平台的操作见[SSH Remote Project](#ssh-remote-project)。
 
 | 操作 | macOS | Linux / Windows |
 | --- | --- | --- |
@@ -130,7 +132,7 @@ md-translator configure --timeout 180
 
 Task 会先保存当前修改；未命名文档需要先保存为 `.md` 或 `.markdown`。翻译固定为简体中文，中文或中英混排文档也会发送给模型；若只需阅读已有中文内容，无需运行翻译。
 
-首次翻译打开 `文件名 · 简体中文.md`，等待完成后即可阅读，无需关闭再打开。已有译文时直接展示，不请求模型；原文或模型配置改变后会重新翻译。译文顶部提供“返回原文”链接；需要并排阅读时可手动拖动标签页。
+本机首次翻译自动打开 `文件名 · 简体中文.md`；SSH 远端翻译在任务终端点击链接打开。等待完成后即可阅读，无需关闭再打开。已有译文时使用缓存，不请求模型；原文或模型配置改变后会重新翻译。译文顶部提供“返回原文”链接；需要并排阅读时可手动拖动标签页。
 
 本地译文在原文所在的项目窗口中以标签页打开，不新增 Project Panel 条目。旧版本已经加入 Project Panel 的缓存条目，请右键选择 **Remove from Project** 后再从原文打开译文；此操作保留磁盘上的缓存文件。
 
@@ -186,36 +188,41 @@ md-translator --data-dir /absolute/path/md-translator install-zed
 
 ## SSH Remote Project
 
-在 Zed 的远端终端按[下载与安装](#下载与安装)安装适合远端系统的程序，并在远端配置 provider；本机只需 Zed，要翻译本机项目时再在本机安装程序。远端 Task 使用远端文件、provider 和缓存，远端必须能访问配置的服务地址。完整文档会发送给该服务；远端不需要安装 Zed CLI。
+本机与远端均为 macOS / Linux 时，本机按 README 安装程序和普通 Zed Task，远端安装适合其系统的程序并配置服务后，即可使用相同的 Task 和快捷键。普通 Task 会在项目所在机器查找程序，SSH 会话自动使用远端模式，无需逐个远端项目安装 Task。
 
-### 安装远端 Task
+Windows 本机 Task 使用 PowerShell，不能直接用于 macOS / Linux 远端；Windows 客户端请使用下方的[显式远端项目入口](#显式远端模式与旧入口)。
 
-在 Zed 的 **Remote Project 终端**中运行，替换为远端程序与项目的实际路径：
+远端翻译使用远端文件、provider 和缓存，远端必须能访问配置的服务地址。完整文档会发送给该服务；远端不需要安装 Zed CLI，也不会启动远端桌面的 Zed。
+
+### 准备远端程序与服务
+
+在 Zed 的 **Remote Project 终端**中按[下载与安装](#下载与安装)安装程序。macOS / Linux 默认安装后可运行：
 
 ```sh
-/absolute/path/to/md-translator configure
-/absolute/path/to/md-translator install-zed --remote --project-root /home/user/project
+"$HOME/.local/bin/md-translator" configure
 ```
 
-已有 provider 配置时可省略第一条。安装器将三个 **Markdown (Remote)** Task 写入远端项目的 `.zed/tasks.json`，保留其它 Task 和注释，修改已有文件前创建备份。可先添加 `--dry-run` 查看目标文件；再次安装不会重复添加任务。程序移动或更新后重新安装。
+已有 provider 配置时可省略。也可在当前 Remote Project 的 `task: spawn` 中选择 **Markdown: 配置翻译服务**，保存到远端。远端使用自定义安装目录时，将其加入远端 PATH。
 
-远端安装只管理项目 Task。本机的快捷键和 Markdown 预览设置仍在本机 Zed 中设置；`--remote` 不与 `--auto-preview`、`--zed-config` 一起使用。本机安装的翻译快捷键不能用于这些远端 Task，以免触发本机程序路径；需要快捷键时，在本机 Zed 为下表中的远端 Task 名称另设绑定。
+从旧版升级时，两端都需更新程序；在 **本机终端**重新运行 `md-translator install-zed` 刷新已有普通 Task，然后从 `task: spawn` 重新选择任务。旧任务终端的重跑操作可能仍使用原命令。本机的快捷键和 Markdown 预览偏好继续在本机 Zed 设置。
 
 | 操作 | 在 `task: spawn` 中选择 |
 | --- | --- |
-| 翻译全文或使用缓存 | **Markdown (Remote): 翻译全文** |
-| 强制重新请求模型 | **Markdown (Remote): 重新翻译全文** |
-| 修改远端 provider | **Markdown (Remote): 配置翻译服务** |
+| 翻译全文或使用缓存 | **Markdown: 翻译全文** |
+| 强制重新请求模型 | **Markdown: 重新翻译全文** |
+| 修改远端 provider | **Markdown: 配置翻译服务** |
 
 ### 点击打开译文
 
-1. 在当前 Remote Project 中打开原文，再运行远端翻译 Task。Task 会先保存当前文档。
+1. 在当前 Remote Project 中打开原文，再运行 **Markdown: 翻译全文** 或使用翻译快捷键。Task 会先保存当前文档。
 2. 任务终端出现 `file://...` 译文链接。macOS 按住 **Cmd** 点击；Linux / Windows 按住 **Ctrl** 点击。请在当前 Zed 任务终端点击，让它按所属远端项目打开文件。
 3. 译文以标签页打开；尚未完成时显示进度，完成后更新同一文件。未启用默认预览时，手动点击 **Preview**。
 
 任务结束后仍可点击终端中的完整链接，再次打开已有译文也用同样的方式。如果点击未生效，复制终端最后输出的原始绝对路径，在当前 Remote Project 中用打开文件操作选择该文件。
 
 缓存无需加入 Project Panel；从缓存预览重译时，先返回原文。返回原文和普通文件链接按远端路径打开。项目外缓存中的图片仍受 Zed 远端预览的路径解析限制，可能不显示，请返回原文查看；程序不下载或复制图片。
+
+### 显式远端模式与旧入口
 
 也可在远端终端直接运行：
 
@@ -226,9 +233,13 @@ md-translator translate --remote --file /home/user/project/README.md --force
 
 `--remote` 不启动 Zed，即使远端已安装 Zed CLI 也一样。它输出适合 Zed 终端点击的链接；普通 SSH 终端不保证按同一个 Remote Project 打开。
 
+普通 Zed Task 已启用 `--auto-remote`，按 `SSH_CONNECTION` 判断 SSH 会话；手动运行 CLI 时可添加此参数，未添加时仍按原有本机方式运行。若远端 shell 清除了 SSH 会话信息，可显式使用 `--remote`。
+
+已有的 **Markdown (Remote)** 项目 Task 继续可用；Windows 客户端、需要固定远端模式或项目专用参数时，可在远端运行 `md-translator install-zed --remote --project-root /远端项目目录`。它只管理该项目的 `.zed/tasks.json`，不修改本机快捷键和预览设置。从 `task: spawn` 选择名称含 **(Remote)** 的对应任务；需要快捷键时，在本机 Zed 为该名称另设绑定。macOS / Linux 普通流程无需这一步；旧入口不用时可按[卸载](#卸载)移除。
+
 ### 存储位置与旧版本
 
-默认使用远端账户的 `~/.md-translator/`。需要其它位置时，在远端配置和安装时传入相同参数：
+默认使用远端账户的 `~/.md-translator/`。需要项目专用的其它位置时，在远端配置和安装显式远端 Task 时传入相同参数：
 
 ```sh
 md-translator --data-dir /absolute/remote/data configure
@@ -262,7 +273,7 @@ md-translator --data-dir /absolute/remote/data install-zed --remote --project-ro
 
 翻译失败或取消后，上次成功的译文会保留；没有成功过的文档需要重新运行翻译。未完成的内容不会保存为译文。
 
-以下使用本机 Task 名称；Remote Project 请选名称含 **(Remote)** 的对应 Task。
+以下 Task 名称适用于本机项目和 SSH Remote Project；使用旧项目入口时，选择名称含 **(Remote)** 的对应 Task。
 
 | 遇到的问题 | 处理方式 |
 | --- | --- |
@@ -298,7 +309,7 @@ md-translator translate --file /path/to/README.md --no-open
 
 先结束正在进行的翻译，然后再次运行 [README 中的下载命令](README.md#开始使用)。安装器替换固定位置的程序，保留配置、密钥和缓存，无需重新填写 API Key。运行 `md-translator --version` 查看当前版本。
 
-更新后重新执行 `md-translator install-zed` 以刷新 Zed 入口；远端则在对应项目运行 `md-translator install-zed --remote --project-root /远端项目目录`。使用过 `--data-dir`、`--config`、`--cache-dir` 或 `--zed-cli` 时，重新安装入口要带上原参数。原来从源码目录运行的用户，先按新方式安装，再刷新入口，就可以移走旧程序。
+更新后在本机重新执行 `md-translator install-zed` 刷新普通 Zed 入口；SSH 远端更新程序即可，无需逐个项目安装 Task。若继续使用旧的 **Markdown (Remote)** 项目入口，则在远端对应项目重新运行 `md-translator install-zed --remote --project-root /远端项目目录`。使用过 `--data-dir`、`--config`、`--cache-dir` 或 `--zed-cli` 时，重新安装入口要带上原参数。原来从源码目录运行的用户，先按新方式安装，再刷新入口，就可以移走旧程序。
 
 需要退回某个已发布版本时，macOS / Linux 在安装命令末尾指定版本：
 
@@ -333,7 +344,7 @@ if ($LASTEXITCODE -eq 0) { Remove-Item "$env:LOCALAPPDATA\Programs\md-translator
 
 自定义安装目录时请替换程序路径；安装时指定过 `--zed-config`，卸载入口时也要带上该参数。`uninstall-zed --dry-run` 可以先查看会改动的文件。命令只移除本工具的三个 Task 及指向这些 Task 的快捷键，修改前备份，其它配置保留。**所有 Markdown 默认预览**的偏好保留；需要关闭时，按[预览设置](#预览设置)恢复默认编辑方式。
 
-**SSH Remote Project**：在删除远端程序前，对安装过 Task 的每个远端项目运行：
+**SSH Remote Project**：使用普通 Task 时，删除远端程序文件即可；本机入口按上面的步骤另行卸载。若曾安装 **Markdown (Remote)** 项目 Task，在删除远端程序前，对相应项目运行：
 
 ```sh
 md-translator uninstall-zed --remote --project-root /远端项目目录

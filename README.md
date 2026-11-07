@@ -25,7 +25,7 @@
 
 **1 · 安装程序和 Zed 入口**
 
-以下命令在本机终端运行，会添加翻译 Task 和快捷键，并让 **所有 Markdown 文件**默认以预览打开。远端项目请按 [SSH Remote Project](USAGE.md#ssh-remote-project) 在远端安装。
+以下命令在本机终端运行，会添加翻译 Task 和快捷键，并让 **所有 Markdown 文件**默认以预览打开。macOS / Linux 的入口也适用于这两种系统的 SSH Remote Project，远端准备见[远端项目指南](USAGE.md#ssh-remote-project)。
 
 **macOS / Linux**：
 
@@ -61,7 +61,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\md-translator-ins
 
 ## 日常使用
 
-| 操作 | 本机入口 |
+| 操作 | 入口 |
 | --- | --- |
 | 翻译或打开已有译文 | **Markdown: 翻译全文** |
 | 强制重新翻译 | **Markdown: 重新翻译全文** |
@@ -69,13 +69,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\md-translator-ins
 | 对照原文阅读 | 点击译文顶部的“返回原文”；需要并排时手动拖动标签页 |
 | 取消进行中的翻译 | 在任务终端按 `Ctrl+C` |
 
-本机翻译快捷键：macOS `Ctrl+Shift+T`；Linux / Windows `Ctrl+K` 后按 `Alt+T`。重译快捷键和默认预览的调整见[日常使用](USAGE.md#日常使用)。
+翻译快捷键：macOS `Ctrl+Shift+T`；Linux / Windows `Ctrl+K` 后按 `Alt+T`。macOS / Linux 本机与 SSH Remote Project 共用入口。重译快捷键和默认预览的调整见[日常使用](USAGE.md#日常使用)。
 
 关闭译文后，从原文再次运行 **Markdown: 翻译全文** 即可继续阅读。原文、服务或模型配置改变后会重新翻译；只想阅读已有译文时，无需强制重译。
 
 译文默认保存在程序运行机器的 `~/.md-translator/cache/`，不在原文旁边。需要编辑或分享时，请将译文正文另存为自己的 Markdown 文件，避免后续翻译覆盖手动修改；详见[保存或分享译文](USAGE.md#保存或分享译文)。
 
-**SSH Remote Project**：在远端安装并配置后，选择 **Markdown (Remote): 翻译全文**，再在当前 Zed 任务终端按住 macOS **Cmd** 或 Linux / Windows **Ctrl** 点击译文链接。配置与译文保存在远端，本机翻译快捷键不适用。完整步骤见[远端项目指南](USAGE.md#ssh-remote-project)。
+**SSH Remote Project**：macOS / Linux 两端准备好程序和服务后，使用相同的 **Markdown: 翻译全文** 或快捷键，再在当前 Zed 任务终端按住 macOS **Cmd** 或 Linux **Ctrl** 点击译文链接。无需逐个远端项目安装 Task，配置与译文保存在远端。已有普通 Task 需在本机重新运行 `install-zed` 刷新；Windows 客户端的远端入口与完整步骤见[远端项目指南](USAGE.md#ssh-remote-project)。
 
 ### 常见问题
 

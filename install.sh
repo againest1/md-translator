@@ -83,7 +83,9 @@ mv -f "$staged" "$bin_dir/md-translator"
 staged=
 printf '\n已安装 %s：%s/md-translator\n' "$version" "$bin_dir"
 printf '%s\n' '更新已保留配置、密钥和缓存。' \
-    '首次使用：运行下面两条命令，随后在 Zed 的 task: spawn 选择「Markdown: 翻译全文」。'
+    '本机使用：运行 install-zed 安装或刷新入口；首次使用还需 configure 配置服务。'
 printf '  "%s/md-translator" install-zed --auto-preview\n  "%s/md-translator" configure\n' "$bin_dir" "$bin_dir"
-printf '%s\n' 'SSH Remote Project 请按使用指南在远端安装项目 Task。' \
+printf '%s\n' '随后在 Zed 的 task: spawn 选择「Markdown: 翻译全文」，或使用翻译快捷键。' \
+    'macOS / Linux SSH Remote Project 使用相同入口和快捷键；远端只需安装程序并配置服务，无需逐个项目安装 Task。' \
+    '远端译文在当前 Zed 任务终端 Cmd+Click / Ctrl+Click 链接打开。' \
     '使用指南：https://github.com/againest1/md-translator/blob/main/USAGE.md'

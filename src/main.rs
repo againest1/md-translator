@@ -57,6 +57,8 @@ enum Command {
             help = "在 Remote Project 中运行：输出可点击译文链接，不启动 Zed"
         )]
         remote: bool,
+        #[arg(long, help = "按 SSH 会话自动选择远端模式（普通 Zed Task 已启用）")]
+        auto_remote: bool,
     },
     /// 安装 Zed Task、配置向导入口和快捷键，自动备份已有配置
     InstallZed {
@@ -161,6 +163,7 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
             force,
             no_open,
             remote,
+            auto_remote,
         } => {
             ensure!(
                 remote_cache_dir.is_none(),
@@ -172,7 +175,10 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
                     project_root,
                     force,
                     no_open,
-                    remote,
+                    remote: remote
+                        || (auto_remote
+                            && std::env::var_os("SSH_CONNECTION")
+                                .is_some_and(|value| !value.is_empty())),
                     preferences: config,
                     cache_dir,
                     zed_cli: cli.zed_cli,
@@ -244,6 +250,18 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
             if !remote {
                 println!(
                     "Task：Markdown: 配置翻译服务 / Markdown: 翻译全文 / Markdown: 重新翻译全文"
+                );
+                if cfg!(windows) {
+                    println!(
+                        "macOS / Linux SSH Remote Project 请在远端安装显式 --remote 项目 Task，选择 Markdown (Remote) 入口。"
+                    );
+                } else {
+                    println!(
+                        "同一 Task 和快捷键适用于本机与 macOS / Linux SSH Remote Project；远端需安装 md-translator 并配置服务，无需逐个项目安装 Task。"
+                    );
+                }
+                println!(
+                    "程序在执行机器的 PATH 或默认安装目录查找；远端译文在任务终端 Cmd+Click / Ctrl+Click 打开。"
                 );
             }
             if auto_preview {
