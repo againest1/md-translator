@@ -2,6 +2,10 @@
 
 [返回 README](README.md)
 
+本指南说明如何配置翻译服务、阅读和保存译文，以及遇到问题后怎样继续。已经完成 [README 的开始使用](README.md#开始使用)，可直接跳到[日常使用](#日常使用)。
+
+[安装](#下载与安装) · [配置服务](#独立配置向导) · [日常使用](#日常使用) · [范围与限制](#翻译范围与显示限制) · [失败恢复](#失败后继续翻译) · [问题反馈](#问题反馈与诊断) · [存储与迁移](#集中存储与路径) · [更新](#更新与回退) · [卸载](#卸载)
+
 ## 下载与安装
 
 首次安装按 [README 的开始使用](README.md#开始使用) 操作。不需要编译程序或安装开发工具；本机阅读需要 Zed，翻译需要能访问所配置的服务。远端项目按 [SSH Remote Project](#ssh-remote-project) 操作。
@@ -99,8 +103,21 @@ Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShel
 md-translator configure --base-url https://provider.example/v1 --model your-model --set-key
 md-translator configure --no-auth
 md-translator configure --timeout 180
-md-translator configure --test
 ```
+
+### 检查配置与连接
+
+根据要确认的问题选择检查方式：
+
+| 想确认什么 | 操作 | 结果说明 |
+| --- | --- | --- |
+| 使用的是哪份配置、哪个模型，译文存在哪里 | `md-translator doctor` | 显示配置和缓存路径、模型、请求超时及预览设置；不请求模型 |
+| API Key 是否已保存且能读取 | `md-translator doctor --check-key` | 在上述检查中增加凭据读取检查，不显示密钥、不请求模型；服务是否接受密钥需另测连接 |
+| 服务能否实际完成一次翻译 | 在向导中选择“保存并测试”，或运行 `md-translator configure --test` | 发送固定短文本请求，看到“测试成功。”后可尝试自己的文档；可能计费 |
+
+短文本测试成功，只说明这次示例请求成功。长文仍可能超时、超出模型限制或无法完整翻译；遇到这些情况按[失败恢复](#失败后继续翻译)处理。
+
+使用过 `--data-dir`、`--config`、`--cache-dir` 等自定义路径时，检查命令也要带上相同参数。Remote Project 的服务与凭据在远端终端检查；预览偏好在本机 Zed 中按[预览设置](#预览设置)核对。
 
 ## 日常使用
 
@@ -224,7 +241,22 @@ md-translator --data-dir /absolute/remote/data install-zed --remote --project-ro
 
 ## 翻译和失败恢复
 
-每次翻译会将整篇文档发送给配置的服务，可能产生费用；包含敏感内容时，请先确认该服务适合处理这些数据。代码、公式、路径和链接目标按原文保留，链接显示文字、图片替代文字和普通引文会翻译。
+每次翻译会将整篇文档发送给配置的服务，可能产生费用；包含敏感内容时，请先确认该服务适合处理这些数据。
+
+### 翻译范围与显示限制
+
+| 文档中的内容 | 译文中的结果 |
+| --- | --- |
+| 正文、标题、列表和表格中的自然语言 | 英文翻译为简体中文，按 Markdown 阅读；已有中文按原意保留，中英混排文档也会整篇发送给模型 |
+| 链接显示文字、图片替代文字和普通引文 | 文字参与翻译；链接和图片仍指向原目标 |
+| 行内代码、代码块、公式和文件路径 | 按原文保留，代码中的注释和字符串也不翻译 |
+| 文档开头的元数据（Frontmatter）、HTML 块 | 整块按原文保留，其中的英文也不翻译 |
+| 正文中的行内 HTML 标签 | 标签保留，标签之间的普通文字可以翻译，例如 `Read <span>Hello</span>` 中的 `Hello` |
+| 图片本身 | 不翻译图片中的文字；本机相对资源按原文位置查找，远端预览中的部分图片可能不显示，可返回原文查看 |
+
+标题翻译后，原文中依赖英文标题的 `#fragment` 目录链接目前可能失效。译文也可能出现语义或术语错误，重要内容请对照原文确认。
+
+### 失败后继续翻译
 
 译文未能保留代码、路径等内容时，会自动再请求一次纠正，因此一次翻译最多产生两次模型请求，并可能增加费用。服务错误、额度不足或输出截断时会停止并提示原因，不自动重试、分片或切换模型。在任务终端中按 `Ctrl+C` 可取消。
 
@@ -243,13 +275,24 @@ md-translator --data-dir /absolute/remote/data install-zed --remote --project-ro
 
 排除问题后通常运行 **Markdown: 翻译全文** 即可；只想重新生成已有译文时，再选择 **Markdown: 重新翻译全文**。
 
-图片中的文字不会翻译，文档开头的元数据（Frontmatter）和原始 HTML 按原文保留，其中的英文也不会翻译。译文仍可能出现语义或术语错误，重要内容请对照原文确认；标题翻译后，原文中依赖英文标题的 `#fragment` 目录链接目前可能失效。
+在终端中使用时，可按需要选择普通翻译、强制重译或仅生成译文文件：
 
 ```sh
 md-translator translate --file /path/to/README.md
 md-translator translate --file /path/to/README.md --force
 md-translator translate --file /path/to/README.md --no-open
 ```
+
+## 问题反馈与诊断
+
+按错误提示处理后仍无法解决，可在 [GitHub Issues](https://github.com/againest1/md-translator/issues) 反馈。请尽量提供：
+
+- 操作步骤、预期结果和实际现象，以及任务终端中的错误文字。
+- 操作系统、Zed 版本、`md-translator --version` 输出，以及使用的是本机项目还是 SSH Remote Project。
+- 所用翻译服务和模型；配置或路径问题可附上 `md-translator doctor --check-key` 的输出，命令用法见[检查配置与连接](#检查配置与连接)。
+- 如问题只在特定文档中出现，提供可公开的最小 Markdown 样例；也可先用[预览示例](examples/preview-demo.md)确认是否出现同样的问题。
+
+这些信息不会自动上传，由你选择是否附在反馈中。`doctor --check-key` 不显示 API Key，但会显示本机或远端路径，分享前请检查是否需要隐藏私人信息。不要附上 `credentials.json` 或密钥；截图、文档样例和服务返回的错误文字也请先检查。
 
 ## 更新与回退
 

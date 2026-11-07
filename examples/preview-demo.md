@@ -1,10 +1,10 @@
 # Translation preview
 
-This document checks the complete translation and native preview workflow.
+A short Markdown document for trying translation and preview in Zed.
 
 ## Features
 
-- Translate the whole document with the provider configured in Zed.
+- Translate the whole document with your chosen translation service.
 - Keep the original file unchanged.
 - Reopen cached translations without another API request.
 
