@@ -66,6 +66,7 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then binary=md-translator.exe; fi
           cp "target/$TARGET/release/$binary" package/
           cp README.md USAGE.md LICENSE package/
+          cp -R examples package/
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
           if [ "$RUNNER_OS" = Linux ]; then
             file "package/$binary"
@@ -82,7 +83,7 @@ jobs:
             pwsh -NoProfile -Command 'Compress-Archive -Path package/* -DestinationPath dist/md-translator-x86_64-pc-windows-msvc.zip'
           else
             cp install.sh package/
-            tar -czf "dist/md-translator-$TARGET.tar.gz" -C package md-translator README.md USAGE.md LICENSE install.sh
+            tar -czf "dist/md-translator-$TARGET.tar.gz" -C package md-translator README.md USAGE.md LICENSE install.sh examples
           fi
           python -c 'import hashlib, pathlib; [(p.with_name(p.name + ".sha256").write_bytes((hashlib.sha256(p.read_bytes()).hexdigest() + "  " + p.name + "\n").encode("ascii"))) for p in pathlib.Path("dist").iterdir() if not p.name.endswith(".sha256")]'
       - uses: actions/upload-artifact@v7
