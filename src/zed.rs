@@ -219,39 +219,54 @@ pub fn merge_keymap(text: &str) -> Result<String> {
     let root = CstRootNode::parse(text, &Default::default())?;
     let array = root.array_value().unwrap();
     let legacy_normal = cfg!(target_os = "macos").then_some("ctrl-alt-t");
-    let existing = array.elements().into_iter().find(|node| {
-        node.to_serde_value().is_some_and(|v| {
-            std::iter::once(normal).chain(legacy_normal).any(|key| {
-                v.get("bindings")
-                    .and_then(|b| b.get(key))
-                    .is_some_and(|b| b[0] == "task::Spawn" && b[1]["task_name"] == TRANSLATE)
-            })
-        })
-    });
-    if let Some(node) = existing {
-        let object = node.as_object().context("已有快捷键配置格式错误")?;
-        set(&object, "context", &json!(CONTEXT));
-        let existing_bindings = object.object_value_or_set("bindings");
-        for (key, value) in bindings.as_object().unwrap() {
-            set(&existing_bindings, key, value);
+    let is_managed = |key: &str, action: &Value| {
+        action[0] == "task::Spawn"
+            && if Some(key) == legacy_normal {
+                action[1]["task_name"] == TRANSLATE
+            } else {
+                [normal, force].contains(&key)
+                    && [TRANSLATE, RETRANSLATE]
+                        .iter()
+                        .any(|name| action[1]["task_name"] == *name)
+            }
+    };
+    let mut installed = false;
+    for node in array.elements() {
+        let Some(value) = node.to_serde_value() else {
+            continue;
+        };
+        let Some(old_bindings) = value["bindings"].as_object() else {
+            continue;
+        };
+        let managed: Vec<_> = old_bindings
+            .iter()
+            .filter(|(key, action)| is_managed(key, action))
+            .map(|(key, _)| key)
+            .collect();
+        if managed.is_empty() {
+            continue;
         }
-    } else {
-        array.append(input(&json!({"context":CONTEXT,"bindings":bindings})));
-    }
-    if let Some(legacy) = legacy_normal {
-        for node in array.elements() {
-            let managed = node.to_serde_value().is_some_and(|v| {
-                v.get("bindings")
-                    .and_then(|b| b.get(legacy))
-                    .is_some_and(|b| b[0] == "task::Spawn" && b[1]["task_name"] == TRANSLATE)
-            });
-            if managed {
-                let object = node.as_object().context("已有快捷键配置格式错误")?;
-                if let Some(property) = object.object_value_or_set("bindings").get(legacy) {
-                    property.remove();
-                }
+        let object = node.as_object().context("已有快捷键配置格式错误")?;
+        let existing_bindings = object.object_value_or_set("bindings");
+        // Only a group containing managed bindings alone may change context.
+        let reuse = !installed && managed.len() == old_bindings.len();
+        if reuse {
+            set(&object, "context", &json!(CONTEXT));
+            for (key, value) in bindings.as_object().unwrap() {
+                set(&existing_bindings, key, value);
+            }
+            installed = true;
+        }
+        for key in managed {
+            if (!reuse || Some(key.as_str()) == legacy_normal)
+                && let Some(property) = existing_bindings.get(key)
+            {
+                property.remove();
             }
         }
+    }
+    if !installed {
+        array.append(input(&json!({"context":CONTEXT,"bindings":bindings})));
     }
     Ok(root.to_string())
 }
