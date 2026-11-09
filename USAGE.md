@@ -71,7 +71,7 @@ Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShel
 | --- | --- |
 | 接口地址 | 填服务商或本地模型服务提供的 API 地址，例如 `https://provider.example/v1`（示例，请替换为实际地址） |
 | 模型名称 | 从所用服务的 API 文档中复制模型标识，确认该服务已开通这个模型 |
-| 推理强度（effort） | 可选 `none`、`low`、`medium`、`high`、`xhigh`、`max`，默认 `low`；再次配置时保留当前选中的级别 |
+| 推理强度（effort） | 可选 `none`、`low`、`medium`、`high`、`xhigh`、`max`、`default`，默认 `low`；再次配置时保留当前选中的级别 |
 | 鉴权方式 | 服务要求 API Key 时选择“保存 API Key”；明确无需密钥的服务选择“无需鉴权” |
 | API Key | 在终端中隐藏输入；再次配置同一服务时可留空保留，改变接口地址后需为新地址填写密钥 |
 | 请求超时 | 单次请求的等待上限，单位为秒；默认 120，可设为 1–3600，模型响应较慢时可适当增加 |
@@ -99,7 +99,9 @@ Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShel
 
 `auth` 可以是 `api_key` 或 `none`。API Key 由向导保存到独立的 `credentials.json`，不写入命令行、日志或译文缓存。**凭据文件是明文，请勿公开或提交到代码仓库**；macOS / Linux 上新建的配置和凭据文件仅当前用户可读写。分享配置排查问题时，不要附上凭据文件。
 
-未填写 `reasoning_effort` 的配置也使用 `low`。若服务完全不接受此参数，可在 `config.json` 的 `provider` 下设为 `"reasoning_effort": "default"`，由服务决定推理行为；这是兼容设置，与关闭推理的 `none` 不同。
+若服务完全不接受 `reasoning_effort` 参数，可在向导中选择 `default`，或运行 `md-translator configure --effort default`。此时请求不发送该参数，由服务决定推理行为；这是兼容设置，与关闭推理的 `none` 不同。
+
+手动编辑 `config.json` 时，`provider.reasoning_effort` 使用上表中的值；未填写、设为 `null` 或填写其它字符串时，均按 `low` 使用。
 
 服务要求额外参数时，可在 `config.json` 的 `provider` 下添加 `max_completion_tokens` 或 `max_tokens`（输出上限只能选择一项）、`custom_headers`，取值以服务商说明为准。`custom_headers` 不允许覆盖鉴权或 Content-Type。
 

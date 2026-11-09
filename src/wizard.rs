@@ -130,7 +130,9 @@ pub fn configure(config: &Path) -> Result<Option<Draft>> {
         .trim()
         .into();
     let Some(effort) = Select::new()
-        .with_prompt("推理强度（effort；none 关闭推理，级别越高通常耗时和用量越多）")
+        .with_prompt(
+            "推理强度（effort；default 由服务决定，none 关闭推理，级别越高通常耗时和用量越多）",
+        )
         .items(REASONING_EFFORTS)
         .default(
             REASONING_EFFORTS

@@ -10,13 +10,14 @@ use std::{
 use url::Url;
 
 pub const DEFAULT_REASONING_EFFORT: &str = "low";
-pub const REASONING_EFFORTS: [&str; 6] = [
+pub const REASONING_EFFORTS: [&str; 7] = [
     "none",
     DEFAULT_REASONING_EFFORT,
     "medium",
     "high",
     "xhigh",
     "max",
+    "default",
 ];
 
 #[derive(Clone)]
@@ -83,8 +84,8 @@ impl ProviderSettings {
         let effort = self
             .reasoning_effort
             .as_deref()
+            .filter(|effort| REASONING_EFFORTS.contains(effort))
             .unwrap_or(DEFAULT_REASONING_EFFORT);
-        ensure!(!effort.trim().is_empty(), "reasoning_effort 不能为空");
         if effort != "default" {
             options.insert("reasoning_effort".into(), json!(effort));
         }

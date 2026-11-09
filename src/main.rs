@@ -96,7 +96,7 @@ enum Command {
         base_url: Option<String>,
         #[arg(long)]
         model: Option<String>,
-        #[arg(long, value_parser = REASONING_EFFORTS, help = "推理强度；未配置时默认 low")]
+        #[arg(long, value_parser = REASONING_EFFORTS, help = "推理强度；default 不发送此参数，未配置时默认 low")]
         effort: Option<String>,
         #[arg(long, conflicts_with = "set_key", help = "当前服务无需鉴权")]
         no_auth: bool,
