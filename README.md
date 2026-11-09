@@ -51,7 +51,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\md-translator-ins
 
 在 Zed 打开要阅读的项目，按 macOS `Cmd+Shift+P` 或 Linux / Windows `Ctrl+Shift+P` 打开[命令面板](https://zed.dev/docs/command-palette)，输入并运行 `task: spawn`，选择 **Markdown: 配置翻译服务**。
 
-在任务终端中填写 **接口地址**和**模型名称**，两者可从所用服务的 API 文档获取。选择“保存 API Key”后输入密钥；无需密钥的服务选择“无需鉴权”。请求超时可先保留默认值，最后选择“保存”。各项填写方法见[配置向导](USAGE.md#独立配置向导)。
+在任务终端中填写 **接口地址**和**模型名称**，两者可从所用服务的 API 文档获取。推理强度（effort）可保留默认的 `low`。选择“保存 API Key”后输入密钥；无需密钥的服务选择“无需鉴权”。请求超时可先保留默认值，最后选择“保存”。各项填写方法见[配置向导](USAGE.md#独立配置向导)。
 
 **3 · 翻译第一份文档**
 

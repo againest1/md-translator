@@ -71,11 +71,14 @@ Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShel
 | --- | --- |
 | 接口地址 | 填服务商或本地模型服务提供的 API 地址，例如 `https://provider.example/v1`（示例，请替换为实际地址） |
 | 模型名称 | 从所用服务的 API 文档中复制模型标识，确认该服务已开通这个模型 |
+| 推理强度（effort） | 可选 `none`、`low`、`medium`、`high`、`xhigh`、`max`，默认 `low`；再次配置时保留当前选中的级别 |
 | 鉴权方式 | 服务要求 API Key 时选择“保存 API Key”；明确无需密钥的服务选择“无需鉴权” |
 | API Key | 在终端中隐藏输入；再次配置同一服务时可留空保留，改变接口地址后需为新地址填写密钥 |
 | 请求超时 | 单次请求的等待上限，单位为秒；默认 120，可设为 1–3600，模型响应较慢时可适当增加 |
 
 使用本地模型前，先启动其兼容 API 服务。接口地址要能从程序运行的机器直接访问；在 Remote Project 中，`localhost` / `127.0.0.1` 指向远端机器。
+
+推理强度对应 [OpenAI Chat Completions 的 `reasoning_effort`](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)：`none` 关闭推理，`low`、`medium`、`high`、`xhigh`、`max` 依次提高推理投入。较低级别通常更快、使用更少推理 token；较高级别不保证译文更好。各服务和模型支持的级别不同，请按所用模型的说明选择。修改级别后，下次翻译会按新配置生成译文。
 
 最后选择“保存”“保存并测试”或“取消”；退出向导不会提交未确认的配置。默认只保存，不请求模型。想确认服务能否使用，可选择“保存并测试”，发送一段固定短文本；这次请求也可能计费。测试失败时已保存的配置保留，可修改后重试。
 
@@ -87,7 +90,8 @@ Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShel
     "name": "default",
     "base_url": "https://provider.example/v1",
     "model": "your-model",
-    "auth": "api_key"
+    "auth": "api_key",
+    "reasoning_effort": "low"
   },
   "request_timeout_seconds": 120
 }
@@ -95,7 +99,9 @@ Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShel
 
 `auth` 可以是 `api_key` 或 `none`。API Key 由向导保存到独立的 `credentials.json`，不写入命令行、日志或译文缓存。**凭据文件是明文，请勿公开或提交到代码仓库**；macOS / Linux 上新建的配置和凭据文件仅当前用户可读写。分享配置排查问题时，不要附上凭据文件。
 
-服务要求额外参数时，可在 `config.json` 的 `provider` 下添加 `reasoning_effort`、`max_completion_tokens` 或 `max_tokens`（输出上限只能选择一项）、`custom_headers`，取值以服务商说明为准。`custom_headers` 不允许覆盖鉴权或 Content-Type。
+未填写 `reasoning_effort` 的配置也使用 `low`。若服务完全不接受此参数，可在 `config.json` 的 `provider` 下设为 `"reasoning_effort": "default"`，由服务决定推理行为；这是兼容设置，与关闭推理的 `none` 不同。
+
+服务要求额外参数时，可在 `config.json` 的 `provider` 下添加 `max_completion_tokens` 或 `max_tokens`（输出上限只能选择一项）、`custom_headers`，取值以服务商说明为准。`custom_headers` 不允许覆盖鉴权或 Content-Type。
 
 工具不读取环境变量中的密钥或代理设置，也不支持配置中的环境变量插值。请填写程序所在机器能够直接访问的服务地址；旧 `--api-key-env` 参数已移除，API Key 请通过向导保存。
 
@@ -104,6 +110,7 @@ Windows 将程序复制到上述安装目录后，运行 README 中的 PowerShel
 ```sh
 md-translator configure --base-url https://provider.example/v1 --model your-model --set-key
 md-translator configure --no-auth
+md-translator configure --effort high
 md-translator configure --timeout 180
 ```
 
@@ -113,7 +120,7 @@ md-translator configure --timeout 180
 
 | 想确认什么 | 操作 | 结果说明 |
 | --- | --- | --- |
-| 使用的是哪份配置、哪个模型，译文存在哪里 | `md-translator doctor` | 显示配置和缓存路径、模型、请求超时及预览设置；不请求模型 |
+| 使用的是哪份配置、哪个模型，译文存在哪里 | `md-translator doctor` | 显示配置和缓存路径、模型、推理强度、请求超时及预览设置；不请求模型 |
 | API Key 是否已保存且能读取 | `md-translator doctor --check-key` | 在上述检查中增加凭据读取检查，不显示密钥、不请求模型；服务是否接受密钥需另测连接 |
 | 服务能否实际完成一次翻译 | 在向导中选择“保存并测试”，或运行 `md-translator configure --test` | 发送固定短文本请求，看到“测试成功。”后可尝试自己的文档；可能计费 |
 
@@ -278,6 +285,7 @@ md-translator --data-dir /absolute/remote/data install-zed --remote --project-ro
 | 遇到的问题 | 处理方式 |
 | --- | --- |
 | 尚未配置服务、鉴权失败 | 运行 **Markdown: 配置翻译服务**，检查地址、模型、API Key 和账户权限，再选择“保存并测试” |
+| 服务不支持所选推理强度或 `reasoning_effort` 参数 | 在向导中选择模型支持的级别；服务不接受该参数时，按[配置说明](#独立配置向导)使用 `default` 兼容设置 |
 | 连接失败或超时 | 确认程序所在机器能直接访问服务，必要时在向导中增加请求超时，再运行 **Markdown: 翻译全文** |
 | 额度不足或请求受限 | 检查服务账户额度和用量限制，恢复后重新运行翻译 |
 | 文档超出模型上下文限制 | 选择支持更长输入的模型；程序不自动拆分文档 |

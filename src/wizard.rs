@@ -1,4 +1,6 @@
-use crate::config::{AuthMode, Preferences, clean_key, credential, credentials_path, endpoint};
+use crate::config::{
+    AuthMode, Preferences, REASONING_EFFORTS, clean_key, credential, credentials_path, endpoint,
+};
 use anyhow::{Result, bail, ensure};
 use dialoguer::{
     Input, Select,
@@ -127,6 +129,20 @@ pub fn configure(config: &Path) -> Result<Option<Draft>> {
         .interact_text()?
         .trim()
         .into();
+    let Some(effort) = Select::new()
+        .with_prompt("推理强度（effort；none 关闭推理，级别越高通常耗时和用量越多）")
+        .items(REASONING_EFFORTS)
+        .default(
+            REASONING_EFFORTS
+                .iter()
+                .position(|effort| Some(*effort) == settings.reasoning_effort.as_deref())
+                .unwrap_or(1), // low
+        )
+        .interact_opt()?
+    else {
+        return Ok(None);
+    };
+    settings.reasoning_effort = Some(REASONING_EFFORTS[effort].into());
     let Some(auth) = Select::new()
         .with_prompt("鉴权方式")
         .items(["保存 API Key", "无需鉴权"])
@@ -160,8 +176,8 @@ pub fn configure(config: &Path) -> Result<Option<Draft>> {
     preferences.request_timeout_seconds = Some(seconds);
     let provider = preferences.provider()?;
     println!(
-        "\n请求地址：{}\n模型：{}",
-        provider.endpoint, provider.model
+        "\n请求地址：{}\n模型：{}\n推理强度（effort）：{}",
+        provider.endpoint, provider.model, REASONING_EFFORTS[effort]
     );
     let choice = Select::new()
         .with_prompt("完成配置")

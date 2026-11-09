@@ -2,7 +2,7 @@ use anyhow::{Result, ensure};
 use clap::{Parser, Subcommand};
 use md_translator::{
     client::translate_whole,
-    config::{AuthMode, Preferences, credential, credentials_path, save_key},
+    config::{AuthMode, Preferences, REASONING_EFFORTS, credential, credentials_path, save_key},
     storage, wizard,
     workflow::{TranslateOptions, translate_file},
     zed,
@@ -96,6 +96,8 @@ enum Command {
         base_url: Option<String>,
         #[arg(long)]
         model: Option<String>,
+        #[arg(long, value_parser = REASONING_EFFORTS, help = "推理强度；未配置时默认 low")]
+        effort: Option<String>,
         #[arg(long, conflicts_with = "set_key", help = "当前服务无需鉴权")]
         no_auth: bool,
         #[arg(long, help = "在终端中隐藏输入 API Key，留空可保留已有密钥")]
@@ -314,6 +316,14 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
             let preferences = Preferences::load(&config)?;
             let provider = preferences.provider()?;
             println!("独立 provider：{} / {}", provider.id, provider.model);
+            println!(
+                "推理强度（effort）：{}",
+                provider
+                    .request_options
+                    .get("reasoning_effort")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("default（由服务决定）")
+            );
             println!("请求超时：{} 秒", preferences.timeout()?.as_secs());
             if check_key {
                 let credential = credential(&provider, &credentials_path(&config))?;
@@ -341,6 +351,7 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
         Command::Configure {
             base_url,
             model,
+            effort,
             no_auth,
             set_key,
             timeout,
@@ -348,6 +359,7 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
         } => {
             let draft = if base_url.is_none()
                 && model.is_none()
+                && effort.is_none()
                 && !no_auth
                 && !set_key
                 && timeout.is_none()
@@ -362,6 +374,9 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
                 }
                 if let Some(model) = model {
                     provider.model = model;
+                }
+                if let Some(effort) = effort {
+                    provider.reasoning_effort = Some(effort);
                 }
                 if no_auth {
                     provider.auth = AuthMode::None;

@@ -9,6 +9,16 @@ use std::{
 };
 use url::Url;
 
+pub const DEFAULT_REASONING_EFFORT: &str = "low";
+pub const REASONING_EFFORTS: [&str; 6] = [
+    "none",
+    DEFAULT_REASONING_EFFORT,
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+];
+
 #[derive(Clone)]
 pub struct Provider {
     pub id: String,
@@ -70,11 +80,13 @@ impl ProviderSettings {
             "max_tokens 和 max_completion_tokens 只能配置一项"
         );
         let mut options = BTreeMap::new();
-        if let Some(effort) = &self.reasoning_effort {
-            ensure!(!effort.trim().is_empty(), "reasoning_effort 不能为空");
-            if effort != "default" {
-                options.insert("reasoning_effort".into(), json!(effort));
-            }
+        let effort = self
+            .reasoning_effort
+            .as_deref()
+            .unwrap_or(DEFAULT_REASONING_EFFORT);
+        ensure!(!effort.trim().is_empty(), "reasoning_effort 不能为空");
+        if effort != "default" {
+            options.insert("reasoning_effort".into(), json!(effort));
         }
         for (field, value) in [
             ("max_tokens", self.max_tokens),
