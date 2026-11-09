@@ -66,24 +66,11 @@ enum Command {
         auto_preview: bool,
         #[arg(long)]
         dry_run: bool,
-        #[arg(
-            long,
-            requires = "project_root",
-            conflicts_with = "auto_preview",
-            help = "在远端项目中安装点击打开译文的 Task"
-        )]
-        remote: bool,
-        #[arg(long, requires = "remote", help = "安装远端 Task 的项目目录")]
-        project_root: Option<PathBuf>,
     },
     /// 移除翻译 Task 与对应快捷键；保留服务配置、密钥、缓存和预览偏好
     UninstallZed {
         #[arg(long)]
         dry_run: bool,
-        #[arg(long, requires = "project_root", help = "移除指定远端项目的翻译 Task")]
-        remote: bool,
-        #[arg(long, requires = "remote")]
-        project_root: Option<PathBuf>,
     },
     /// 检查独立配置、缓存与预览；不请求模型，不显示密钥
     Doctor {
@@ -193,33 +180,12 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
         Command::InstallZed {
             auto_preview,
             dry_run,
-            remote,
-            project_root,
         } => {
-            let changes = if remote {
-                ensure!(
-                    cli.zed_config.is_none(),
-                    "远端 Task 使用 --project-root 安装，不使用 --zed-config。"
-                );
-                zed::install_remote_tasks(
-                    project_root.as_deref().unwrap(),
-                    &std::env::current_exe()?,
-                    dry_run,
-                    &prefix,
-                )?
-            } else {
-                let zed_config = match cli.zed_config {
-                    Some(path) => path,
-                    None => storage::zed_config_dir()?,
-                };
-                zed::install_with_args(
-                    &zed_config,
-                    &std::env::current_exe()?,
-                    auto_preview,
-                    dry_run,
-                    &prefix,
-                )?
+            let zed_config = match cli.zed_config {
+                Some(path) => path,
+                None => storage::zed_config_dir()?,
             };
+            let changes = zed::install_with_args(&zed_config, auto_preview, dry_run, &prefix)?;
             println!(
                 "{}",
                 if dry_run {
@@ -237,59 +203,34 @@ async fn run(cli: Cli, cancel: &CancellationToken) -> Result<()> {
                     println!("  备份：{}", backup.display());
                 }
             }
-            if remote {
-                println!(
-                    "Task：Markdown (Remote): 配置翻译服务 / Markdown (Remote): 翻译全文 / Markdown (Remote): 重新翻译全文"
-                );
-                println!(
-                    "在当前 Remote Project 的 task: spawn 中选择远端 Task；在任务终端 Cmd+Click / Ctrl+Click 译文链接。远端安装不修改本机快捷键和预览设置。"
-                );
-            } else if cfg!(target_os = "macos") {
+            if cfg!(target_os = "macos") {
                 println!("Ctrl+Shift+T：翻译全文；Ctrl+Option+Shift+T：强制重译。");
             } else {
                 println!("Ctrl+K 后按 Alt+T：翻译；Ctrl+K 后按 Alt+Shift+T：重译。");
             }
-            if !remote {
+            println!("Task：Markdown: 配置翻译服务 / Markdown: 翻译全文 / Markdown: 重新翻译全文");
+            if cfg!(windows) {
                 println!(
-                    "Task：Markdown: 配置翻译服务 / Markdown: 翻译全文 / Markdown: 重新翻译全文"
+                    "macOS / Linux SSH Remote Project 请在远端终端运行 md-translator translate --remote --file \"/远端/原文.md\"，替换为实际路径后翻译并点击输出的链接打开。"
                 );
-                if cfg!(windows) {
-                    println!(
-                        "macOS / Linux SSH Remote Project 请在远端安装显式 --remote 项目 Task，选择 Markdown (Remote) 入口。"
-                    );
-                } else {
-                    println!(
-                        "同一 Task 和快捷键适用于本机与 macOS / Linux SSH Remote Project；远端需安装 md-translator 并配置服务，无需逐个项目安装 Task。"
-                    );
-                }
+            } else {
                 println!(
-                    "程序在执行机器的 PATH 或默认安装目录查找；远端译文在任务终端 Cmd+Click / Ctrl+Click 打开。"
+                    "同一 Task 和快捷键适用于本机与 macOS / Linux SSH Remote Project；远端需安装 md-translator 并配置服务，无需逐个项目安装 Task。"
                 );
             }
+            println!(
+                "程序在执行机器的 PATH 或默认安装目录查找；远端译文在当前 Zed 终端 Cmd+Click / Ctrl+Click 打开。"
+            );
             if auto_preview {
                 println!("Markdown 文件默认以原生预览打开。");
             }
         }
-        Command::UninstallZed {
-            dry_run,
-            remote,
-            project_root,
-        } => {
-            let directory = if remote {
-                ensure!(
-                    cli.zed_config.is_none(),
-                    "远端 Task 使用 --project-root 卸载，不使用 --zed-config。"
-                );
-                let project = project_root.unwrap().canonicalize()?;
-                ensure!(project.is_dir(), "--project-root 必须是目录");
-                project.join(".zed")
-            } else {
-                match cli.zed_config {
-                    Some(path) => path,
-                    None => storage::zed_config_dir()?,
-                }
+        Command::UninstallZed { dry_run } => {
+            let directory = match cli.zed_config {
+                Some(path) => path,
+                None => storage::zed_config_dir()?,
             };
-            let changes = zed::uninstall(&directory, remote, dry_run)?;
+            let changes = zed::uninstall(&directory, dry_run)?;
             println!(
                 "{}",
                 if dry_run {

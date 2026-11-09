@@ -75,7 +75,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\md-translator-ins
 
 译文默认保存在程序运行机器的 `~/.md-translator/cache/`，不在原文旁边。需要编辑或分享时，请将译文正文另存为自己的 Markdown 文件，避免后续翻译覆盖手动修改；详见[保存或分享译文](USAGE.md#保存或分享译文)。
 
-**SSH Remote Project**：macOS / Linux 两端准备好程序和服务后，使用相同的 **Markdown: 翻译全文** 或快捷键，再在当前 Zed 任务终端按住 macOS **Cmd** 或 Linux **Ctrl** 点击译文链接。无需逐个远端项目安装 Task，配置与译文保存在远端。已有普通 Task 需在本机重新运行 `install-zed` 刷新；Windows 客户端的远端入口与完整步骤见[远端项目指南](USAGE.md#ssh-remote-project)。
+**SSH Remote Project**：macOS / Linux 两端准备好程序和服务后，使用相同的 **Markdown: 翻译全文** 或快捷键，再在当前 Zed 任务终端按住 macOS **Cmd** 或 Linux **Ctrl** 点击译文链接。无需逐个远端项目安装 Task，配置与译文保存在远端。已有普通 Task 需在本机重新运行 `install-zed` 刷新；Windows 客户端通过远端终端命令翻译，完整步骤见[远端项目指南](USAGE.md#ssh-remote-project)。
 
 ### 常见问题
 

@@ -12,9 +12,6 @@ use std::{
 pub const TRANSLATE: &str = "Markdown: 翻译全文";
 pub const RETRANSLATE: &str = "Markdown: 重新翻译全文";
 pub const CONFIGURE: &str = "Markdown: 配置翻译服务";
-pub const REMOTE_TRANSLATE: &str = "Markdown (Remote): 翻译全文";
-pub const REMOTE_RETRANSLATE: &str = "Markdown (Remote): 重新翻译全文";
-pub const REMOTE_CONFIGURE: &str = "Markdown (Remote): 配置翻译服务";
 const CONTEXT: &str =
     "(Editor && mode == full && (extension == md || extension == markdown)) || MarkdownPreview";
 
@@ -89,35 +86,22 @@ fn set(object: &CstObject, key: &str, value: &Value) {
     }
 }
 
-pub fn merge_tasks(text: &str, binary: &Path) -> Result<String> {
-    merge_tasks_with_args(text, binary, &[], false)
+pub fn merge_tasks(text: &str) -> Result<String> {
+    merge_tasks_with_args(text, &[])
 }
 
-fn merge_tasks_with_args(
-    text: &str,
-    binary: &Path,
-    prefix: &[String],
-    remote: bool,
-) -> Result<String> {
+fn merge_tasks_with_args(text: &str, prefix: &[String]) -> Result<String> {
     let root = CstRootNode::parse(text, &Default::default())?;
     let array = root.array_value().context("Zed tasks.json 必须是数组")?;
-    let labels = if remote {
-        [REMOTE_TRANSLATE, REMOTE_RETRANSLATE, REMOTE_CONFIGURE]
-    } else {
-        [TRANSLATE, RETRANSLATE, CONFIGURE]
-    };
+    let labels = [TRANSLATE, RETRANSLATE, CONFIGURE];
     for label in labels {
         let configuring = label == labels[2];
-        let command = if remote {
-            binary.to_string_lossy().into_owned()
-        } else {
-            task_launcher().0.to_owned()
-        };
+        let (command, shell) = task_launcher();
         let mut args: Vec<String> = prefix
             .iter()
             .enumerate()
             .map(|(index, arg)| {
-                if !remote && index % 2 == 1 {
+                if index % 2 == 1 {
                     task_literal(arg)
                 } else {
                     arg.clone()
@@ -139,37 +123,30 @@ fn merge_tasks_with_args(
             .into_iter()
             .map(String::from),
         );
-        if remote && !configuring {
-            args.push("--remote".into());
-        } else if !configuring {
+        if !configuring {
             args.push("--auto-remote".into());
         }
         if label == labels[1] {
             args.push("--force".into());
         }
-        if !remote {
-            for arg in &mut args {
-                let name = match arg.as_str() {
-                    "$ZED_FILE" => "MD_TRANSLATOR_TASK_FILE",
-                    "$ZED_WORKTREE_ROOT" => "MD_TRANSLATOR_TASK_ROOT",
-                    _ => continue,
-                };
-                *arg = if cfg!(windows) {
-                    format!("\"$env:{name}\"")
-                } else {
-                    format!("\"${name}\"")
-                };
-            }
+        for arg in &mut args {
+            let name = match arg.as_str() {
+                "$ZED_FILE" => "MD_TRANSLATOR_TASK_FILE",
+                "$ZED_WORKTREE_ROOT" => "MD_TRANSLATOR_TASK_ROOT",
+                _ => continue,
+            };
+            *arg = if cfg!(windows) {
+                format!("\"$env:{name}\"")
+            } else {
+                format!("\"${name}\"")
+            };
         }
-        let mut value = json!({"label":label,"command":command,"args":args,"save":"current",
+        let mut value = json!({"label":label,"command":command,"args":args,"shell":shell,"save":"current",
             "reveal":if configuring {"always"} else {"no_focus"},"hide":"never","use_new_terminal":false,"allow_concurrent_runs":false,
             "show_command":false,"show_summary":true});
-        if !remote {
-            value["shell"] = task_launcher().1;
-            if !configuring {
-                // Pass file paths as environment data, not shell source after Zed interpolation.
-                value["env"] = json!({"MD_TRANSLATOR_TASK_FILE":"$ZED_FILE","MD_TRANSLATOR_TASK_ROOT":"$ZED_WORKTREE_ROOT"});
-            }
+        if !configuring {
+            // Pass file paths as environment data, not shell source after Zed interpolation.
+            value["env"] = json!({"MD_TRANSLATOR_TASK_FILE":"$ZED_FILE","MD_TRANSLATOR_TASK_ROOT":"$ZED_WORKTREE_ROOT"});
         }
         let existing = array
             .elements()
@@ -278,49 +255,23 @@ pub struct Change {
     pub backup: Option<PathBuf>,
 }
 
-pub fn install(
-    config_dir: &Path,
-    binary: &Path,
-    auto_preview: bool,
-    dry_run: bool,
-) -> Result<Vec<Change>> {
-    install_with_args(config_dir, binary, auto_preview, dry_run, &[])
+pub fn install(config_dir: &Path, auto_preview: bool, dry_run: bool) -> Result<Vec<Change>> {
+    install_with_args(config_dir, auto_preview, dry_run, &[])
 }
 
 pub fn install_with_args(
     config_dir: &Path,
-    binary: &Path,
     auto_preview: bool,
     dry_run: bool,
     prefix: &[String],
 ) -> Result<Vec<Change>> {
-    install_files(config_dir, binary, auto_preview, dry_run, prefix, false)
+    install_files(config_dir, auto_preview, dry_run, prefix)
 }
 
-pub fn install_remote_tasks(
-    project: &Path,
-    binary: &Path,
-    dry_run: bool,
-    prefix: &[String],
-) -> Result<Vec<Change>> {
-    let project = project
-        .canonicalize()
-        .context("无法读取 --project-root 目录")?;
-    ensure!(project.is_dir(), "--project-root 必须是目录");
-    install_files(&project.join(".zed"), binary, false, dry_run, prefix, true)
-}
-
-pub fn uninstall(config_dir: &Path, remote: bool, dry_run: bool) -> Result<Vec<Change>> {
-    let labels = if remote {
-        [REMOTE_TRANSLATE, REMOTE_RETRANSLATE, REMOTE_CONFIGURE]
-    } else {
-        [TRANSLATE, RETRANSLATE, CONFIGURE]
-    };
+pub fn uninstall(config_dir: &Path, dry_run: bool) -> Result<Vec<Change>> {
+    let labels = [TRANSLATE, RETRANSLATE, CONFIGURE];
     let mut changes = Vec::new();
     for name in ["tasks.json", "keymap.json"] {
-        if remote && name == "keymap.json" {
-            continue;
-        }
         let path = config_dir.join(name);
         let before = match fs::read_to_string(&path) {
             Ok(text) => text,
@@ -378,17 +329,12 @@ pub fn uninstall(config_dir: &Path, remote: bool, dry_run: bool) -> Result<Vec<C
 
 fn install_files(
     config_dir: &Path,
-    binary: &Path,
     auto_preview: bool,
     dry_run: bool,
     prefix: &[String],
-    remote: bool,
 ) -> Result<Vec<Change>> {
     let mut changes = Vec::new();
     for name in ["tasks.json", "keymap.json", "settings.json"] {
-        if remote && name != "tasks.json" {
-            continue;
-        }
         if name == "settings.json" && !auto_preview {
             continue;
         }
@@ -404,7 +350,7 @@ fn install_files(
             "[]\n"
         });
         let mut after = match name {
-            "tasks.json" => merge_tasks_with_args(text, binary, prefix, remote)?,
+            "tasks.json" => merge_tasks_with_args(text, prefix)?,
             "keymap.json" => merge_keymap(text)?,
             "settings.json" => {
                 ensure!(
