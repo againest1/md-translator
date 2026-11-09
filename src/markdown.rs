@@ -269,17 +269,22 @@ impl ProtectedText {
             }
         }
         spans.extend(math_spans(&source, &spans, &tables));
-        for quoted in QUOTED_REFERENCE.find_iter(&source) {
+        let mut quote_cursor = 0;
+        while let Some(quoted) = QUOTED_REFERENCE.find_at(&source, quote_cursor) {
             let span = quoted.start()..quoted.end();
             if source[..span.start]
                 .chars()
                 .next_back()
                 .is_some_and(char::is_alphanumeric)
-                || spans.iter().any(|other| overlaps(other, &span))
             {
+                // A rejected opener's closing quote may be the start of a real path.
+                quote_cursor = span.start + 1;
                 continue;
             }
-            if quoted_path(&quoted.as_str()[1..quoted.as_str().len() - 1]) {
+            quote_cursor = span.end;
+            if !spans.iter().any(|other| overlaps(other, &span))
+                && quoted_path(&quoted.as_str()[1..quoted.as_str().len() - 1])
+            {
                 spans.push(span);
             }
         }
